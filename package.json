@@ -1,20 +1,68 @@
 {
   "name": "pixi-watchface-engine",
   "version": "0.1.0",
-  "module": "src/index.ts",
-  "main": "src/index.ts",
-  "types": "src/index.ts",
+  "description": "A PixiJS v8 watchface editor engine with visual editor, plugin system, and intuitive API",
+  "author": "Eric Schmar (ericschmar@gmail.com)",
   "type": "module",
-  "private": true,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "API.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "bun build src/index.ts --outdir dist --target browser"
+    "build": "bun build src/index.ts --outdir dist --target browser && tsc --emitDeclarationOnly --declaration",
+    "prepublishOnly": "bun run typecheck && bun run build"
   },
-  "devDependencies": {
-    "@types/bun": "latest"
+  "keywords": [
+    "pixi",
+    "pixijs",
+    "watchface",
+    "editor",
+    "visual-editor",
+    "2d-graphics",
+    "canvas",
+    "svelte",
+    "react",
+    "typescript",
+    "plugin-system",
+    "undo-redo",
+    "serialization"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericschmar/pixi-watchface-engine"
+  },
+  "homepage": "https://github.com/ericschmar/pixi-watchface-engine#readme",
+  "bugs": {
+    "url": "https://github.com/ericschmar/pixi-watchface-engine/issues"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "pixi.js": "^8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "pixi.js": {
+      "optional": false
+    }
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "pixi.js": "^8.16.0"

@@ -1,0 +1,12 @@
+src/
+.git/
+.github/
+node_modules/
+*.ts
+!*.d.ts
+.gitignore
+tsconfig.json
+bunfig.toml
+bun.lockb
+GETTING_STARTED.md
+.npmignore

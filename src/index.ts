@@ -21,6 +21,8 @@ export type { AutosavePluginOptions } from './plugins/AutosavePlugin.ts';
 export { UndoRedoPlugin } from './plugins/UndoRedoPlugin.ts';
 export type { UndoRedoPluginOptions } from './plugins/UndoRedoPlugin.ts';
 export { KeyboardShortcutsPlugin } from './plugins/KeyboardShortcutsPlugin.ts';
+export { ViewportPlugin } from './plugins/ViewportPlugin.ts';
+export type { ViewportPluginOptions } from './plugins/ViewportPlugin.ts';
 
 // Managers
 export { ElementManager } from './managers/ElementManager.ts';

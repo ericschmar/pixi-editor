@@ -25,6 +25,9 @@ export interface EngineEventMap {
 
   'state:saved': { json: string };
   'state:loaded': { json: string };
+
+  'viewport:zoomed': { zoom: number };
+  'viewport:moved': { x: number; y: number };
 }
 
 type Handler<T> = T extends void ? () => void : (data: T) => void;

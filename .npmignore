@@ -1,4 +1,5 @@
 src/
+example/
 .git/
 .github/
 node_modules/

@@ -7,3 +7,5 @@ export type { AutosavePluginOptions } from './AutosavePlugin.ts';
 export { UndoRedoPlugin } from './UndoRedoPlugin.ts';
 export type { UndoRedoPluginOptions } from './UndoRedoPlugin.ts';
 export { KeyboardShortcutsPlugin } from './KeyboardShortcutsPlugin.ts';
+export { ViewportPlugin } from './ViewportPlugin.ts';
+export type { ViewportPluginOptions } from './ViewportPlugin.ts';

@@ -1,6 +1,6 @@
 {
   "name": "pixi-watchface-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A PixiJS v8 watchface editor engine with visual editor, plugin system, and intuitive API",
   "author": "Eric Schmar (ericschmar@gmail.com)",
   "type": "module",
@@ -65,6 +65,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "pixi-viewport": "^6.0.3",
     "pixi.js": "^8.16.0"
   }
 }

@@ -14,3 +14,4 @@ bun.lockb
 *.iml
 .sublime-project
 .sublime-workspace
+.npmrc

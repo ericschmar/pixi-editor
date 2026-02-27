@@ -1,4 +1,4 @@
-import { Sprite, Assets, Texture } from 'pixi.js';
+import { Sprite, Texture, ImageSource } from 'pixi.js';
 import { BaseElement } from './BaseElement.ts';
 import type { SerializedElement } from '../types.ts';
 
@@ -18,14 +18,18 @@ export class ImageElement extends BaseElement {
     this.loadTexture(src);
   }
 
-  private async loadTexture(src: string): Promise<void> {
-    try {
-      const texture = await Assets.load<Texture>(src);
+  private loadTexture(src: string): void {
+    const img = new Image();
+    img.onload = () => {
+      const texture = new Texture({ source: new ImageSource({ resource: img }) });
       this.sprite.texture = texture;
       this._loaded = true;
-    } catch (err) {
-      console.warn(`Failed to load image: ${src}`, err);
-    }
+      this.emitChange('loaded', false, true);
+    };
+    img.onerror = () => {
+      console.warn(`Failed to load image: ${src}`);
+    };
+    img.src = src;
   }
 
   get src(): string { return this._src; }
@@ -34,8 +38,8 @@ export class ImageElement extends BaseElement {
     if (old === value) return;
     this._src = value;
     this._loaded = false;
-    this.loadTexture(value);
     this.emitChange('src', old, value);
+    this.loadTexture(value);
   }
 
   get loaded(): boolean { return this._loaded; }

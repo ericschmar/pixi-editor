@@ -1,7 +1,7 @@
 import { Graphics } from 'pixi.js';
 import { BaseElement } from './BaseElement.ts';
 import { FillMask } from './FillMask.ts';
-import type { Bounds, FillDirection, SerializedElement, ShapeType } from '../types.ts';
+import type { Bounds, FillDirection, LineCap, SerializedElement, ShapeType } from '../types.ts';
 import { clamp } from '../utils/math.ts';
 
 export class ShapeElement extends BaseElement {
@@ -15,6 +15,7 @@ export class ShapeElement extends BaseElement {
   private _fillPercentage: number;
   private _fillDirection: FillDirection;
   private _strokeWidth: number;
+  private _lineCap: LineCap;
   private _shapeParams: Record<string, number>;
 
   private constructor(
@@ -26,6 +27,7 @@ export class ShapeElement extends BaseElement {
       fillPercentage: number;
       fillDirection: FillDirection;
       strokeWidth: number;
+      lineCap: LineCap;
     }>,
   ) {
     super('shape');
@@ -36,6 +38,7 @@ export class ShapeElement extends BaseElement {
     this._fillPercentage = options?.fillPercentage ?? 100;
     this._fillDirection = options?.fillDirection ?? 'left-to-right';
     this._strokeWidth = options?.strokeWidth ?? 2;
+    this._lineCap = options?.lineCap ?? 'butt';
 
     this.bgGraphics = new Graphics();
     this.fgGraphics = new Graphics();
@@ -136,6 +139,15 @@ export class ShapeElement extends BaseElement {
     this.emitChange('strokeWidth', old, value);
   }
 
+  get lineCap(): LineCap { return this._lineCap; }
+  set lineCap(value: LineCap) {
+    const old = this._lineCap;
+    if (old === value) return;
+    this._lineCap = value;
+    this.redraw();
+    this.emitChange('lineCap', old, value);
+  }
+
   override get width(): number {
     return this.getLocalBounds().width;
   }
@@ -188,7 +200,7 @@ export class ShapeElement extends BaseElement {
     switch (this._shapeType) {
       case 'circle': {
         const r = this._shapeParams['radius']!;
-        return { x: 0, y: 0, width: r * 2, height: r * 2 };
+        return { x: -r, y: -r, width: r * 2, height: r * 2 };
       }
       case 'rectangle':
         return { x: 0, y: 0, width: this._shapeParams['w']!, height: this._shapeParams['h']! };
@@ -197,13 +209,15 @@ export class ShapeElement extends BaseElement {
         const ly1 = this._shapeParams['ly1']!;
         const lx2 = this._shapeParams['lx2']!;
         const ly2 = this._shapeParams['ly2']!;
+        const half = this._strokeWidth / 2;
         const w = Math.abs(lx2 - lx1) || 1;
         const h = Math.abs(ly2 - ly1) || 1;
-        return { x: 0, y: 0, width: w, height: h };
+        return { x: -half, y: -half, width: w + this._strokeWidth, height: h + this._strokeWidth };
       }
       case 'arc': {
         const r = this._shapeParams['radius']!;
-        return { x: 0, y: 0, width: r * 2, height: r * 2 };
+        const half = this._strokeWidth / 2;
+        return { x: -r - half, y: -r - half, width: (r + half) * 2, height: (r + half) * 2 };
       }
     }
   }
@@ -224,12 +238,12 @@ export class ShapeElement extends BaseElement {
         const ly1 = this._shapeParams['ly1']!;
         const lx2 = this._shapeParams['lx2']!;
         const ly2 = this._shapeParams['ly2']!;
-        g.moveTo(lx1, ly1).lineTo(lx2, ly2).stroke({ color, width: this._strokeWidth });
+        g.moveTo(lx1, ly1).lineTo(lx2, ly2).stroke({ color, width: this._strokeWidth, cap: this._lineCap });
         break;
       }
       case 'circle': {
         const r = this._shapeParams['radius']!;
-        g.circle(r, r, r).fill({ color });
+        g.circle(0, 0, r).fill({ color });
         break;
       }
       case 'rectangle': {
@@ -242,7 +256,7 @@ export class ShapeElement extends BaseElement {
         const r = this._shapeParams['radius']!;
         const start = this._shapeParams['startAngle']!;
         const end = this._shapeParams['endAngle']!;
-        g.arc(r, r, r, start, end).stroke({ color, width: this._strokeWidth });
+        g.arc(0, 0, r, start, end).stroke({ color, width: this._strokeWidth, cap: this._lineCap });
         break;
       }
     }
@@ -263,6 +277,7 @@ export class ShapeElement extends BaseElement {
       fillPercentage: this._fillPercentage,
       fillDirection: this._fillDirection,
       strokeWidth: this._strokeWidth,
+      lineCap: this._lineCap,
     };
   }
 
@@ -272,6 +287,7 @@ export class ShapeElement extends BaseElement {
     if (data.fillPercentage !== undefined) this.fillPercentage = data.fillPercentage as number;
     if (data.fillDirection !== undefined) this.fillDirection = data.fillDirection as FillDirection;
     if (data.strokeWidth !== undefined) this.strokeWidth = data.strokeWidth as number;
+    if (data.lineCap !== undefined) this.lineCap = data.lineCap as LineCap;
     this.x = data.x;
     this.y = data.y;
     this.rotation = data.rotation;
@@ -289,6 +305,7 @@ export class ShapeElement extends BaseElement {
       fillPercentage: data.fillPercentage as number,
       fillDirection: data.fillDirection as FillDirection,
       strokeWidth: data.strokeWidth as number,
+      lineCap: data.lineCap as LineCap | undefined,
     });
     el.x = data.x;
     el.y = data.y;

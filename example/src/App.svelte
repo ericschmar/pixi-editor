@@ -4,6 +4,7 @@
         WatchfaceEngine,
         TextElement,
         ShapeElement,
+        ImageElement,
         GridPlugin,
         UndoRedoPlugin,
         KeyboardShortcutsPlugin,
@@ -13,6 +14,7 @@
     // ── State ──────────────────────────────────────────────────────────────────
 
     let canvasContainer: HTMLDivElement;
+    let imageFileInput: HTMLInputElement;
     let status = $state("Initializing…");
     let fillPercent = $state(100);
     let gridVisible = $state(true);
@@ -35,11 +37,12 @@
         engine = new WatchfaceEngine();
 
         await engine.init(canvasContainer, {
-            width: 400,
-            height: 400,
+            width: 800,
+            height: 800,
             background: 0x1a1a2e,
             selectionHandleColor: 0x7c5cbf,
             selectionHandleFillColor: 0x1e1e3a,
+            coordinateOrigin: "center",
         });
 
         grid = new GridPlugin({
@@ -151,6 +154,21 @@
         engine.selection.selectOnly(el);
     }
 
+    function addImage() {
+        imageFileInput.click();
+    }
+
+    function onImageFileSelected() {
+        const file = imageFileInput.files?.[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        const el = new ImageElement(url, rp(), rp());
+        engine.elements.add(el);
+        engine.selection.selectOnly(el);
+        // Reset so the same file can be picked again
+        imageFileInput.value = "";
+    }
+
     function toggleGrid() {
         gridVisible = !gridVisible;
         grid.visible = gridVisible;
@@ -220,72 +238,66 @@
     }
 
     // ── Demo Scene ─────────────────────────────────────────────────────────────
+    // Coordinates are relative to center (0, 0 = canvas center)
 
     function loadDemoScene() {
         engine.selection.deselectAll();
         engine.elements.clear();
 
-        const ring = ShapeElement.circle(200, 200, 190);
+        const ring = ShapeElement.circle(0, 0, 190);
         ring.foregroundColor = 0x1e1e3a;
         ring.backgroundColor = 0x0a0a1a;
         ring.interactable = false;
         engine.elements.add(ring);
 
-        const batteryBg = ShapeElement.rectangle(130, 340, 140, 16);
+        const batteryBg = ShapeElement.rectangle(-70, 140, 140, 16);
         batteryBg.foregroundColor = 0x22c55e;
         batteryBg.backgroundColor = 0x0a2a1a;
         batteryBg.fillPercentage = 72;
         batteryBg.fillDirection = "left-to-right";
         engine.elements.add(batteryBg);
 
-        const stepsArc = ShapeElement.arc(200, 200, 170, -Math.PI / 2, Math.PI);
+        const stepsArc = ShapeElement.arc(0, 0, 170, -Math.PI / 2, Math.PI);
         stepsArc.foregroundColor = 0xf59e0b;
         stepsArc.backgroundColor = 0x1a1000;
         stepsArc.strokeWidth = 8;
+        stepsArc.lineCap = "round";
         engine.elements.add(stepsArc);
 
-        const hrArc = ShapeElement.arc(200, 200, 155, -Math.PI / 2, 0.8);
+        const hrArc = ShapeElement.arc(0, 0, 155, -Math.PI / 2, 0.8);
         hrArc.foregroundColor = 0xf87171;
         hrArc.backgroundColor = 0x1a0000;
         hrArc.strokeWidth = 8;
+        hrArc.lineCap = "round";
         engine.elements.add(hrArc);
 
-        const time = new TextElement("10:09", 200, 155, {
+        const time = new TextElement("10:09", 0, -45, {
             fontSize: 72,
             fontWeight: "bold",
             color: 0xffffff,
             align: "center",
         });
-        time.x = 200 - time.width / 2;
+        time.x = -time.width / 2;
         engine.elements.add(time);
 
-        const date = new TextElement("WED 25 FEB", 200, 248, {
+        const date = new TextElement("WED 25 FEB", 0, 48, {
             fontSize: 18,
             color: 0xa78bfa,
             align: "center",
         });
-        date.x = 200 - date.width / 2;
+        date.x = -date.width / 2;
         engine.elements.add(date);
 
-        const batteryLabel = new TextElement("72%", 176, 358, {
+        const batteryLabel = new TextElement("72%", -24, 158, {
             fontSize: 12,
             color: 0x6ee7b7,
         });
         engine.elements.add(batteryLabel);
-
-        const dot1 = ShapeElement.circle(120, 200, 4);
-        dot1.foregroundColor = 0xa78bfa;
-        dot1.interactable = false;
-        engine.elements.add(dot1);
-
-        const dot2 = ShapeElement.circle(280, 200, 4);
-        dot2.foregroundColor = 0xa78bfa;
-        dot2.interactable = false;
-        engine.elements.add(dot2);
     }
 
+    // Random position in [-160, 160] for center-origin canvas
     function rp(): number {
-        return 40 + Math.floor(Math.random() * 320);
+        return -160 + Math.floor(Math.random() * 320);
     }
 </script>
 
@@ -303,7 +315,15 @@
                     <button onclick={addRect}>+ Rectangle</button>
                     <button onclick={addArc}>+ Arc</button>
                     <button onclick={addLine}>+ Line</button>
+                    <button onclick={addImage}>+ Image</button>
                 </div>
+                <input
+                    bind:this={imageFileInput}
+                    type="file"
+                    accept="image/*"
+                    style="display:none"
+                    onchange={onImageFileSelected}
+                />
             </section>
 
             <section>

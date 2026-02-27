@@ -6,7 +6,7 @@ import { InteractionManager } from './managers/InteractionManager.ts';
 import { SerializationManager } from './managers/SerializationManager.ts';
 import { SelectionManager } from './selection/SelectionManager.ts';
 import { PluginManager } from './plugins/PluginManager.ts';
-import type { HandleConfig } from './types.ts';
+import type { HandleConfig, CoordinateOrigin } from './types.ts';
 
 export interface WatchfaceEngineOptions {
   width: number;
@@ -15,6 +15,13 @@ export interface WatchfaceEngineOptions {
   selectionHandleColor?: number;
   selectionHandleFillColor?: number;
   selectionHandleSize?: number;
+  /**
+   * Where (0, 0) is placed on the canvas.
+   * - `'top-left'` (default) — standard screen coordinates.
+   * - `'center'` — origin is the center of the canvas; useful for watchface
+   *   layouts where elements are positioned relative to the watch center.
+   */
+  coordinateOrigin?: CoordinateOrigin;
 }
 
 export class WatchfaceEngine {
@@ -30,6 +37,14 @@ export class WatchfaceEngine {
   private elementsLayer!: Container;
   private selectionLayer!: Container;
   private overlayLayer!: Container;
+
+  /**
+   * Single container that holds all four layers. Plugins (e.g. ViewportPlugin)
+   * should move this container rather than individual layers.
+   * @internal
+   */
+  private _contentRoot!: Container;
+
   private interaction: InteractionManager;
 
   private _options!: WatchfaceEngineOptions;
@@ -71,19 +86,28 @@ export class WatchfaceEngine {
 
     container.appendChild(this.app.canvas);
 
-    // Build layer hierarchy
+    // contentRoot holds all layers; offset it to implement coordinateOrigin
+    this._contentRoot = new Container();
+    if (options.coordinateOrigin === 'center') {
+      this._contentRoot.x = options.width / 2;
+      this._contentRoot.y = options.height / 2;
+    }
+
+    // Build layer hierarchy inside contentRoot
     this.backgroundLayer = new Container();
     this.elementsLayer = new Container();
     this.elementsLayer.sortableChildren = true;
     this.selectionLayer = new Container();
     this.overlayLayer = new Container();
 
-    this.app.stage.addChild(
+    this._contentRoot.addChild(
       this.backgroundLayer,
       this.elementsLayer,
       this.selectionLayer,
       this.overlayLayer,
     );
+
+    this.app.stage.addChild(this._contentRoot);
 
     // Enable stage interaction for marquee selection
     this.app.stage.eventMode = 'static';
@@ -97,7 +121,7 @@ export class WatchfaceEngine {
     if (options.selectionHandleColor !== undefined) handleConfig.color = options.selectionHandleColor;
     if (options.selectionHandleFillColor !== undefined) handleConfig.fillColor = options.selectionHandleFillColor;
     if (options.selectionHandleSize !== undefined) handleConfig.size = options.selectionHandleSize;
-    this.selection.init(this.selectionLayer, this.app, handleConfig);
+    this.selection.init(this.selectionLayer, this.app, handleConfig, this._contentRoot);
 
     this._initialized = true;
     this.eventBus.emit('engine:ready');
@@ -109,6 +133,22 @@ export class WatchfaceEngine {
 
   get initialized(): boolean {
     return this._initialized;
+  }
+
+  /**
+   * The offset applied to the content root based on `coordinateOrigin`.
+   * `{ x: 0, y: 0 }` for `'top-left'`, `{ x: width/2, y: height/2 }` for `'center'`.
+   */
+  get originOffset(): { x: number; y: number } {
+    if (this._options?.coordinateOrigin === 'center') {
+      return { x: this._options.width / 2, y: this._options.height / 2 };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  /** The container that holds all layers. Plugins should add this to viewports. */
+  getContentRoot(): Container {
+    return this._contentRoot;
   }
 
   getBackgroundLayer(): Container {

@@ -1,6 +1,14 @@
 export type FillDirection = 'left-to-right' | 'right-to-left' | 'top-to-bottom' | 'bottom-to-top';
 
+/** Where (0, 0) is placed on the canvas.
+ *  - `'top-left'` — default; origin is the top-left corner.
+ *  - `'center'`   — origin is the center of the canvas.
+ */
+export type CoordinateOrigin = 'top-left' | 'center';
+
 export type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc';
+
+export type LineCap = 'butt' | 'round' | 'square';
 
 export type ElementType = 'text' | 'image' | 'shape';
 

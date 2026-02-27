@@ -34,7 +34,9 @@ export { SerializationManager } from './managers/SerializationManager.ts';
 export type {
   FillDirection,
   ShapeType,
+  LineCap,
   ElementType,
+  CoordinateOrigin,
   SerializedElement,
   WatchfaceState,
   UndoableAction,

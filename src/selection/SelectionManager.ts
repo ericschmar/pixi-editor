@@ -19,19 +19,18 @@ export class SelectionManager implements InteractionDelegate {
   private selectionBox: SelectionBox;
   private marquee: MarqueeSelect;
   private transformController: TransformController;
-  private clipboard: string[] = []; // serialized JSON strings
+  private clipboard: string[] = [];
 
   private layer: Container | null = null;
+  private contentRoot: Container | null = null;
   private handleConfig: HandleConfig = { color: 0x0088ff, fillColor: 0xffffff, size: 8 };
 
-  // Marquee state
+  // Marquee state (world-space coords)
   private isMarqueeActive = false;
   private marqueeStart = { x: 0, y: 0 };
 
-  // Element drag state
   private isDraggingElement = false;
 
-  // Stage event handlers (bound for cleanup)
   private stageDownHandler: ((e: FederatedPointerEvent) => void) | null = null;
   private stageMoveHandler: ((e: FederatedPointerEvent) => void) | null = null;
   private stageUpHandler: ((e: FederatedPointerEvent) => void) | null = null;
@@ -52,19 +51,22 @@ export class SelectionManager implements InteractionDelegate {
     layer: Container,
     app: Application,
     config?: Partial<HandleConfig>,
+    contentRoot?: Container,
   ): void {
     this.layer = layer;
     if (config) {
       this.handleConfig = { ...this.handleConfig, ...config };
     }
+    if (contentRoot) {
+      this.contentRoot = contentRoot;
+      this.transformController.setContentRoot(contentRoot);
+    }
 
     this.layer.addChild(this.selectionBox.container);
     this.layer.addChild(this.marquee.graphics);
 
-    // Wire up handle events for resize/rotate
     this.wireHandleEvents();
 
-    // Wire stage events for marquee and global pointer tracking
     this.stageDownHandler = (e: FederatedPointerEvent) => this.onStagePointerDown(e);
     this.stageMoveHandler = (e: FederatedPointerEvent) => this.onStagePointerMove(e);
     this.stageUpHandler = (e: FederatedPointerEvent) => this.onStagePointerUp(e);
@@ -74,10 +76,15 @@ export class SelectionManager implements InteractionDelegate {
     app.stage.on('pointerup', this.stageUpHandler);
     app.stage.on('pointerupoutside', this.stageUpHandler);
 
-    // Deselect elements that get removed
     this.eventBus.on('element:removed', ({ element }) => {
       this.selected.delete(element);
       this.updateSelectionVisuals();
+    });
+
+    this.eventBus.on('element:changed', ({ element }) => {
+      if (this.selected.has(element)) {
+        this.updateSelectionVisuals();
+      }
     });
   }
 
@@ -99,7 +106,6 @@ export class SelectionManager implements InteractionDelegate {
       }
     }
 
-    // Start dragging
     this.isDraggingElement = true;
     this.transformController.startMove(this.getSelected(), event);
   }
@@ -126,6 +132,10 @@ export class SelectionManager implements InteractionDelegate {
     this.addToSelection(element);
   }
 
+  selectOnly(element: BaseElement): void {
+    this.select(element);
+  }
+
   addToSelection(element: BaseElement): void {
     this.selected.add(element);
     this.updateSelectionVisuals();
@@ -136,6 +146,10 @@ export class SelectionManager implements InteractionDelegate {
     this.selected.delete(element);
     this.updateSelectionVisuals();
     this.eventBus.emit('selection:changed', { selected: this.getSelected() });
+  }
+
+  deselectAll(): void {
+    this.clearSelection();
   }
 
   clearSelection(): void {
@@ -212,15 +226,22 @@ export class SelectionManager implements InteractionDelegate {
     this.selectionBox.show(bounds, this.handleConfig, this.selected.size === 1);
   }
 
+  /**
+   * Compute combined bounds in world space by combining each element's
+   * logical position (el.x, el.y) with its local-space bounding box.
+   * This correctly handles both 'top-left' and 'center' coordinate origins,
+   * and is unaffected by viewport zoom/pan.
+   */
   private computeCombinedBounds(elements: BaseElement[]) {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const el of elements) {
-      const display = el.getDisplayObject();
-      const b = display.getBounds();
-      minX = Math.min(minX, b.x);
-      minY = Math.min(minY, b.y);
-      maxX = Math.max(maxX, b.x + b.width);
-      maxY = Math.max(maxY, b.y + b.height);
+      const b = el.getDisplayObject().getLocalBounds();
+      const wx = el.x + b.x;
+      const wy = el.y + b.y;
+      minX = Math.min(minX, wx);
+      minY = Math.min(minY, wy);
+      maxX = Math.max(maxX, wx + b.width);
+      maxY = Math.max(maxY, wy + b.height);
     }
     return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
   }
@@ -243,56 +264,67 @@ export class SelectionManager implements InteractionDelegate {
 
   // --- Stage events (marquee + global pointer tracking) ---
 
-  private onStagePointerDown(event: FederatedPointerEvent): void {
-    // If clicking directly on stage (empty area), start marquee
-    if (event.target === event.currentTarget) {
-      if (!event.shiftKey) {
-        this.clearSelection();
-      }
-      this.isMarqueeActive = true;
-      this.marqueeStart = { x: event.globalX, y: event.globalY };
+  /** Convert a global pointer position to world (content-root-local) coords. */
+  private toWorld(globalX: number, globalY: number): { x: number; y: number } {
+    if (this.contentRoot) {
+      return this.contentRoot.toLocal({ x: globalX, y: globalY });
     }
+    return { x: globalX, y: globalY };
+  }
+
+  private onStagePointerDown(event: FederatedPointerEvent): void {
+    // Elements and handles call stopPropagation(), so any event that reaches
+    // here was a click on empty canvas — treat it as a background click.
+    if (!event.shiftKey) {
+      this.clearSelection();
+    }
+    this.isMarqueeActive = true;
+    const world = this.toWorld(event.globalX, event.globalY);
+    this.marqueeStart = { x: world.x, y: world.y };
   }
 
   private onStagePointerMove(event: FederatedPointerEvent): void {
-    // Handle ongoing transform (resize/rotate from handles)
     if (this.transformController.isDragging && !this.isDraggingElement) {
       this.transformController.onPointerMove(event);
       this.updateSelectionVisuals();
       return;
     }
 
-    // Handle marquee
     if (this.isMarqueeActive) {
+      const world = this.toWorld(event.globalX, event.globalY);
       this.marquee.draw(
         this.marqueeStart.x, this.marqueeStart.y,
-        event.globalX, event.globalY,
+        world.x, world.y,
       );
     }
   }
 
   private onStagePointerUp(event: FederatedPointerEvent): void {
-    // Finish transform (resize/rotate)
     if (this.transformController.isDragging && !this.isDraggingElement) {
       this.transformController.onPointerUp(event);
       this.updateSelectionVisuals();
     }
 
-    // Finish marquee
     if (this.isMarqueeActive) {
       this.isMarqueeActive = false;
+      const world = this.toWorld(event.globalX, event.globalY);
       const rect = this.marquee.getRect(
         this.marqueeStart.x, this.marqueeStart.y,
-        event.globalX, event.globalY,
+        world.x, world.y,
       );
       this.marquee.clear();
 
-      // Only process if the marquee has some size
       if (rect.width > 3 || rect.height > 3) {
         for (const el of this.elementManager.getAll()) {
           if (!el.interactable) continue;
-          const b = el.getDisplayObject().getBounds();
-          if (this.boundsOverlap(rect, { x: b.x, y: b.y, width: b.width, height: b.height })) {
+          const lb = el.getDisplayObject().getLocalBounds();
+          const elBounds = {
+            x: el.x + lb.x,
+            y: el.y + lb.y,
+            width: lb.width,
+            height: lb.height,
+          };
+          if (this.boundsOverlap(rect, elBounds)) {
             this.selected.add(el);
           }
         }

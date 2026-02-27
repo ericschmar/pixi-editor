@@ -109,21 +109,12 @@ export class ViewportPlugin implements Plugin {
     if (this.options.wheel) this._viewport.wheel({ smooth: 3 });
     if (this.options.decelerate) this._viewport.decelerate();
 
-    // Move all engine layers into the viewport
-    const layers = [
-      engine.getBackgroundLayer(),
-      engine.getElementsLayer(),
-      engine.getSelectionLayer(),
-      engine.getOverlayLayer(),
-    ];
+    // Move the contentRoot (which holds all layers + origin offset) into the viewport
+    const contentRoot = engine.getContentRoot();
+    contentRoot.parent?.removeChild(contentRoot);
+    this._viewport.addChild(contentRoot);
 
-    for (const layer of layers) {
-      // Remove from stage if already there, then re-parent into viewport
-      layer.parent?.removeChild(layer);
-      this._viewport.addChild(layer);
-    }
-
-    // Insert viewport into the stage (at index 0 to keep it at bottom of stage)
+    // Insert viewport into the stage
     app.stage.addChildAt(this._viewport, 0);
 
     // Keep stage interactive for left-click selection/marquee.
@@ -144,21 +135,12 @@ export class ViewportPlugin implements Plugin {
   destroy(): void {
     if (!this._viewport) return;
 
-    // Move layers back to stage before destroying viewport
+    // Move contentRoot back to stage before destroying viewport
     const { app } = this.engine;
-    const layers = [
-      this.engine.getBackgroundLayer(),
-      this.engine.getElementsLayer(),
-      this.engine.getSelectionLayer(),
-      this.engine.getOverlayLayer(),
-    ];
-
-    for (const layer of layers) {
-      this._viewport.removeChild(layer);
-      app.stage.addChild(layer);
-    }
+    const contentRoot = this.engine.getContentRoot();
+    this._viewport.removeChild(contentRoot);
+    app.stage.addChild(contentRoot);
 
     this._viewport.destroy();
-
   }
 }

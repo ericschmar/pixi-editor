@@ -1,6 +1,7 @@
 import { Graphics } from 'pixi.js';
 import type { Plugin } from './Plugin.ts';
 import type { WatchfaceEngine } from '../WatchfaceEngine.ts';
+import type { ViewportPlugin } from './ViewportPlugin.ts';
 
 export interface GridPluginOptions {
   cellSize?: number;
@@ -49,18 +50,26 @@ export class GridPlugin implements Plugin {
     this.gridGraphics = new Graphics();
     this.gridGraphics.alpha = this.options.opacity;
     this.gridGraphics.visible = this.options.visible;
-    engine.getBackgroundLayer().addChild(this.gridGraphics);
+
+    // Place on stage (outside viewport) so it is never scaled by zoom
+    engine.app.stage.addChild(this.gridGraphics);
+
     this.drawGrid();
 
-    // Hook into drag events for snap-to-grid
-    const unsub = engine.eventBus.on('interaction:dragMove', ({ elements }) => {
+    // Redraw whenever the viewport zooms or pans
+    const unsubZoom = engine.eventBus.on('viewport:zoomed', () => this.drawGrid());
+    const unsubMove = engine.eventBus.on('viewport:moved', () => this.drawGrid());
+    this.unsubscribers.push(unsubZoom, unsubMove);
+
+    // Snap-to-grid on drag
+    const unsubDrag = engine.eventBus.on('interaction:dragMove', ({ elements }) => {
       if (!this.options.snapEnabled) return;
       for (const el of elements) {
         el.x = this.snapValue(el.x);
         el.y = this.snapValue(el.y);
       }
     });
-    this.unsubscribers.push(unsub);
+    this.unsubscribers.push(unsubDrag);
   }
 
   snapValue(value: number): number {
@@ -69,22 +78,51 @@ export class GridPlugin implements Plugin {
 
   private drawGrid(): void {
     this.gridGraphics.clear();
+
     const { width, height } = this.engine.options;
+    const { x: ox, y: oy } = this.engine.originOffset;
     const { cellSize, color } = this.options;
 
-    // Vertical lines
-    for (let x = 0; x <= width; x += cellSize) {
+    // Get current viewport transform (scale + pan) if ViewportPlugin is active
+    const viewportPlugin = this.engine.plugins.get('viewport') as ViewportPlugin | undefined;
+    const viewport = viewportPlugin?.viewport;
+
+    let scale = 1;
+    let panX = 0;
+    let panY = 0;
+
+    if (viewport) {
+      scale = viewport.scale.x;
+      panX = viewport.x;
+      panY = viewport.y;
+    }
+
+    // The contentRoot offset (origin) in screen space
+    // contentRoot.x/y accounts for both the viewport pan and the origin offset
+    const originScreenX = panX + ox * scale;
+    const originScreenY = panY + oy * scale;
+
+    // Screen-space cell size
+    const screenCell = cellSize * scale;
+
+    // Find the first grid line to the left/above the canvas edge (screen 0,0)
+    // by working backwards from the origin in screen space
+    const startX = originScreenX - Math.ceil(originScreenX / screenCell) * screenCell;
+    const startY = originScreenY - Math.ceil(originScreenY / screenCell) * screenCell;
+
+    // Vertical lines across the canvas width
+    for (let sx = startX; sx <= width; sx += screenCell) {
       this.gridGraphics
-        .moveTo(x, 0)
-        .lineTo(x, height)
+        .moveTo(sx, 0)
+        .lineTo(sx, height)
         .stroke({ color, width: 0.5 });
     }
 
-    // Horizontal lines
-    for (let y = 0; y <= height; y += cellSize) {
+    // Horizontal lines across the canvas height
+    for (let sy = startY; sy <= height; sy += screenCell) {
       this.gridGraphics
-        .moveTo(0, y)
-        .lineTo(width, y)
+        .moveTo(0, sy)
+        .lineTo(width, sy)
         .stroke({ color, width: 0.5 });
     }
   }

@@ -232,11 +232,6 @@
         status = "JSON exported to console (F12)";
     }
 
-    function loadDemo() {
-        loadDemoScene();
-        status = "Demo scene loaded";
-    }
-
     // ── Demo Scene ─────────────────────────────────────────────────────────────
     // Coordinates are relative to center (0, 0 = canvas center)
 

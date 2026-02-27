@@ -80,8 +80,6 @@ export class WatchfaceEngine {
       height: options.height,
       background: options.background ?? 0x1a1a2e,
       antialias: true,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
     });
 
     container.appendChild(this.app.canvas);

@@ -117,7 +117,11 @@ export class ShapeElement extends BaseElement {
     const clamped = clamp(value, 0, 100);
     if (old === clamped) return;
     this._fillPercentage = clamped;
-    this.updateMask();
+    if (this._shapeType === 'arc') {
+      this.redraw();
+    } else {
+      this.updateMask();
+    }
     this.emitChange('fillPercentage', old, clamped);
   }
 
@@ -126,7 +130,11 @@ export class ShapeElement extends BaseElement {
     const old = this._fillDirection;
     if (old === value) return;
     this._fillDirection = value;
-    this.updateMask();
+    if (this._shapeType === 'arc') {
+      this.redraw();
+    } else {
+      this.updateMask();
+    }
     this.emitChange('fillDirection', old, value);
   }
 
@@ -226,9 +234,46 @@ export class ShapeElement extends BaseElement {
     this.bgGraphics.clear();
     this.fgGraphics.clear();
 
-    this.drawShape(this.bgGraphics, this._backgroundColor);
-    this.drawShape(this.fgGraphics, this._foregroundColor);
-    this.updateMask();
+    if (this._shapeType === 'arc') {
+      this.drawArc(this.bgGraphics, this._backgroundColor, 100);
+      this.drawArc(this.fgGraphics, this._foregroundColor, this._fillPercentage);
+      // Arc fill is handled by angular span — no rectangular mask needed.
+      this.fillMask.update(this.getLocalBounds(), 100, this._fillDirection);
+    } else {
+      this.drawShape(this.bgGraphics, this._backgroundColor);
+      this.drawShape(this.fgGraphics, this._foregroundColor);
+      this.updateMask();
+    }
+  }
+
+  /**
+   * Draw the arc foreground with its span trimmed to `fillPct` percent.
+   * `fillDirection` controls which end the fill grows from:
+   *   - left-to-right / top-to-bottom: grows from startAngle toward endAngle
+   *   - right-to-left / bottom-to-top: grows from endAngle toward startAngle
+   */
+  private drawArc(g: Graphics, color: number, fillPct: number): void {
+    const r = this._shapeParams['radius']!;
+    const start = this._shapeParams['startAngle']!;
+    const end = this._shapeParams['endAngle']!;
+    const pct = clamp(fillPct, 0, 100) / 100;
+    const span = end - start;
+
+    let arcStart: number;
+    let arcEnd: number;
+
+    if (this._fillDirection === 'right-to-left' || this._fillDirection === 'bottom-to-top') {
+      // Grow from end angle backward
+      arcStart = end - span * pct;
+      arcEnd = end;
+    } else {
+      // Grow from start angle forward (default)
+      arcStart = start;
+      arcEnd = start + span * pct;
+    }
+
+    if (pct === 0) return;
+    g.arc(0, 0, r, arcStart, arcEnd).stroke({ color, width: this._strokeWidth, cap: this._lineCap });
   }
 
   private drawShape(g: Graphics, color: number): void {
@@ -250,13 +295,6 @@ export class ShapeElement extends BaseElement {
         const w = this._shapeParams['w']!;
         const h = this._shapeParams['h']!;
         g.rect(0, 0, w, h).fill({ color });
-        break;
-      }
-      case 'arc': {
-        const r = this._shapeParams['radius']!;
-        const start = this._shapeParams['startAngle']!;
-        const end = this._shapeParams['endAngle']!;
-        g.arc(0, 0, r, start, end).stroke({ color, width: this._strokeWidth, cap: this._lineCap });
         break;
       }
     }

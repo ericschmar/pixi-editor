@@ -9,6 +9,7 @@
         UndoRedoPlugin,
         KeyboardShortcutsPlugin,
         ViewportPlugin,
+        AlignmentGuidesPlugin,
     } from "pixi-watchface-engine";
 
     // ── State ──────────────────────────────────────────────────────────────────
@@ -65,6 +66,12 @@
         engine.plugins.register(undoRedo);
         engine.plugins.register(keyboard);
         engine.plugins.register(viewport);
+        engine.plugins.register(
+            new AlignmentGuidesPlugin({
+                color: 0xff3366, // optional, default hot pink
+                threshold: 4, // optional, world-space pixels
+            }),
+        );
 
         engine.eventBus.on("viewport:zoomed", ({ zoom }) => {
             zoomLevel = zoom;

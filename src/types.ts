@@ -10,6 +10,18 @@ export type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc';
 
 export type LineCap = 'butt' | 'round' | 'square';
 
+/** Text-on-arc path configuration.
+ *  Characters are distributed along the arc from `startAngle` to `endAngle`.
+ *  - `side: 'outside'` — characters sit outside the arc (feet toward center)
+ *  - `side: 'inside'`  — characters sit inside the arc (heads toward center)
+ */
+export interface ArcPath {
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+  side: 'outside' | 'inside';
+}
+
 export type ElementType = 'text' | 'image' | 'shape';
 
 export interface SerializedElement {

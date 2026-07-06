@@ -15,3 +15,8 @@ bun.lockb
 .sublime-project
 .sublime-workspace
 .npmrc
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key

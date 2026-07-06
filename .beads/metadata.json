@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "pixi_editor",
+  "project_id": "502153d3-5239-4928-b0f9-ff6fbd0e69c9"
+}

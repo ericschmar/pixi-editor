@@ -222,8 +222,23 @@ export class SelectionManager implements InteractionDelegate {
       return;
     }
 
+    // Single selection: follow the element's own transform so the box rotates
+    // with it. Draw using the element's local bounds, which align 1:1 with the
+    // element's drawing (identical to the axis-aligned case at rotation 0).
+    if (this.selected.size === 1) {
+      const el = this.getSelected()[0]!;
+      const b = el.getDisplayObject().getLocalBounds();
+      this.selectionBox.show(
+        { x: b.x, y: b.y, width: b.width, height: b.height },
+        this.handleConfig,
+        true,
+        { x: el.x, y: el.y, rotation: el.rotation },
+      );
+      return;
+    }
+
     const bounds = this.computeCombinedBounds(this.getSelected());
-    this.selectionBox.show(bounds, this.handleConfig, this.selected.size === 1);
+    this.selectionBox.show(bounds, this.handleConfig, false);
   }
 
   /**

@@ -39,9 +39,20 @@ export class SelectionBox {
     bounds: { x: number; y: number; width: number; height: number },
     config: HandleConfig,
     showRotation: boolean,
+    transform?: { x: number; y: number; rotation: number },
   ): void {
     this.container.visible = true;
     const { x, y, width: w, height: h } = bounds;
+
+    // Follow the element's own transform so the box rotates together with it.
+    // When omitted, bounds are treated as world-space (axis-aligned multi-select).
+    if (transform) {
+      this.container.position.set(transform.x, transform.y);
+      this.container.rotation = transform.rotation;
+    } else {
+      this.container.position.set(0, 0);
+      this.container.rotation = 0;
+    }
 
     // Draw bounding box outline
     this.outline.clear();

@@ -279,7 +279,8 @@
             color: 0xffffff,
             align: "center",
         });
-        time.x = -time.width / 2;
+        // Text is now center-anchored: nudge by half its size so the old top-left layout is preserved.
+        time.y = time.y + time.height / 2;
         engine.elements.add(time);
 
         const date = new TextElement("WED 25 FEB", 0, 48, {
@@ -287,13 +288,15 @@
             color: 0xa78bfa,
             align: "center",
         });
-        date.x = -date.width / 2;
+        date.y = date.y + date.height / 2;
         engine.elements.add(date);
 
         const batteryLabel = new TextElement("72%", -24, 158, {
             fontSize: 12,
             color: 0x6ee7b7,
         });
+        batteryLabel.x = batteryLabel.x + batteryLabel.width / 2;
+        batteryLabel.y = batteryLabel.y + batteryLabel.height / 2;
         engine.elements.add(batteryLabel);
     }
 

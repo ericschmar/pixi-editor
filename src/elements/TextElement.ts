@@ -204,6 +204,12 @@ export class TextElement extends BaseElement {
   private makeText(content: string): Text {
     return new Text({
       text: content,
+      // Anchor (0.5, 0.5) so the element's (x, y) marks the CENTER of the glyph run,
+      // consistent with ShapeElement.line/arc which are centered on (x, y). Arc-text
+      // sprites override this via sprite.anchor.set() after creation, so it's a no-op there.
+      // Semantics: element.x/y (and toJSON().x/.y) now mean the text CENTER, not its
+      // top-left; previously saved top-left positions will visually shift ~half the text size.
+      anchor: 0.5,
       style: new TextStyle({
         fontFamily: this._fontFamily,
         fontSize: this._fontSize,

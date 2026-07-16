@@ -1,4 +1,4 @@
-import { Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
+import { CanvasTextMetrics, Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
 import { BaseElement } from './BaseElement.ts';
 import type { ArcPath, SerializedElement } from '../types.ts';
 
@@ -8,9 +8,17 @@ export interface TextElementStyle {
   fontWeight?: TextStyleFontWeight;
   align?: TextStyleAlign;
   color?: number;
+  lineHeight?: number | null;
+  letterSpacing?: number;
+  boxWidth?: number | null;
+  breakWords?: boolean;
+  textTransform?: TextTransform;
+  maxLines?: number | null;
+  truncationCharacter?: string;
 }
 
 type TextStyleAlign = 'left' | 'center' | 'right';
+type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 
 export class TextElement extends BaseElement {
   private pixiText: Text | null;
@@ -22,6 +30,13 @@ export class TextElement extends BaseElement {
   private _fontWeight: TextStyleFontWeight;
   private _align: TextStyleAlign;
   private _color: number;
+  private _lineHeight: number | null;
+  private _letterSpacing: number;
+  private _boxWidth: number | null;
+  private _breakWords: boolean;
+  private _textTransform: TextTransform;
+  private _maxLines: number | null;
+  private _truncationCharacter: string;
   private _arcPath: ArcPath | null = null;
 
   constructor(text: string, x: number, y: number, style?: TextElementStyle) {
@@ -32,8 +47,15 @@ export class TextElement extends BaseElement {
     this._fontWeight = style?.fontWeight ?? 'normal';
     this._align = style?.align ?? 'left';
     this._color = style?.color ?? 0xffffff;
+    this._lineHeight = style?.lineHeight ?? null;
+    this._letterSpacing = style?.letterSpacing ?? 0;
+    this._boxWidth = style?.boxWidth ?? null;
+    this._breakWords = style?.breakWords ?? false;
+    this._textTransform = style?.textTransform ?? 'none';
+    this._maxLines = style?.maxLines ?? null;
+    this._truncationCharacter = style?.truncationCharacter ?? '…';
 
-    this.pixiText = this.makeText(this._text);
+    this.pixiText = this.makeText(this.displayText(this._text));
     this.container.addChild(this.pixiText);
 
     this.x = x;
@@ -106,6 +128,73 @@ export class TextElement extends BaseElement {
     this.emitChange('color', old, value);
   }
 
+  get lineHeight(): number | null { return this._lineHeight; }
+  set lineHeight(value: number | null) {
+    const old = this._lineHeight;
+    if (old === value) return;
+    this._lineHeight = value;
+    this.applyStyleToAll(s => { if (value != null) s.lineHeight = value; });
+    this.redraw();
+    this.emitChange('lineHeight', old, value);
+  }
+
+  get letterSpacing(): number { return this._letterSpacing; }
+  set letterSpacing(value: number) {
+    const old = this._letterSpacing;
+    if (old === value) return;
+    this._letterSpacing = value;
+    this.applyStyleToAll(s => { s.letterSpacing = value; });
+    this.emitChange('letterSpacing', old, value);
+  }
+
+  get boxWidth(): number | null { return this._boxWidth; }
+  set boxWidth(value: number | null) {
+    const old = this._boxWidth;
+    if (old === value) return;
+    this._boxWidth = value;
+    this.applyStyleToAll(s => {
+      s.wordWrap = value != null;
+      s.wordWrapWidth = value ?? 100;
+    });
+    this.emitChange('boxWidth', old, value);
+  }
+
+  get breakWords(): boolean { return this._breakWords; }
+  set breakWords(value: boolean) {
+    const old = this._breakWords;
+    if (old === value) return;
+    this._breakWords = value;
+    this.applyStyleToAll(s => { s.breakWords = value; });
+    this.emitChange('breakWords', old, value);
+  }
+
+  get textTransform(): TextTransform { return this._textTransform; }
+  set textTransform(value: TextTransform) {
+    const old = this._textTransform;
+    if (old === value) return;
+    this._textTransform = value;
+    this.redraw();
+    this.emitChange('textTransform', old, value);
+  }
+
+  get maxLines(): number | null { return this._maxLines; }
+  set maxLines(value: number | null) {
+    const old = this._maxLines;
+    if (old === value) return;
+    this._maxLines = value;
+    this.redraw();
+    this.emitChange('maxLines', old, value);
+  }
+
+  get truncationCharacter(): string { return this._truncationCharacter; }
+  set truncationCharacter(value: string) {
+    const old = this._truncationCharacter;
+    if (old === value) return;
+    this._truncationCharacter = value;
+    this.redraw();
+    this.emitChange('truncationCharacter', old, value);
+  }
+
   override get width(): number {
     if (this._arcPath) return this._arcPath.radius * 2;
     return this.pixiText?.width ?? 0;
@@ -139,10 +228,10 @@ export class TextElement extends BaseElement {
     this.charSprites = [];
 
     if (!this.pixiText) {
-      this.pixiText = this.makeText(this._text);
+      this.pixiText = this.makeText(this.displayText(this._text));
       this.container.addChild(this.pixiText);
     } else {
-      this.pixiText.text = this._text;
+      this.pixiText.text = this.displayText(this._text);
       this.pixiText.visible = true;
     }
   }
@@ -201,7 +290,57 @@ export class TextElement extends BaseElement {
     }
   }
 
+  private displayText(value: string): string {
+    const transformed = this.transformText(value);
+    if (!this._maxLines || this._maxLines <= 0) return transformed;
+
+    const style = this.makeTextStyle();
+    const lines = CanvasTextMetrics.measureText(transformed, style).lines;
+    const maxLines = Math.floor(this._maxLines);
+    if (lines.length <= maxLines) return transformed;
+
+    const visibleLines = lines.slice(0, maxLines);
+    let lastLine = visibleLines[visibleLines.length - 1]?.replace(/\s+$/, '') ?? '';
+    if (this._boxWidth != null) {
+      while (lastLine && CanvasTextMetrics.measureText(`${lastLine}${this._truncationCharacter}`, style, undefined, false).width > this._boxWidth) {
+        lastLine = lastLine.slice(0, -1);
+      }
+    }
+    visibleLines[visibleLines.length - 1] = `${lastLine}${this._truncationCharacter}`;
+    return visibleLines.join('\n');
+  }
+
+  private transformText(value: string): string {
+    if (this._textTransform === 'uppercase') return value.toUpperCase();
+    if (this._textTransform === 'lowercase') return value.toLowerCase();
+    if (this._textTransform === 'capitalize') {
+      return value.replace(/\p{L}[\p{L}\p{M}'’-]*/gu, word => {
+        const first = word[0];
+        return first ? first.toUpperCase() + word.slice(1).toLowerCase() : word;
+      });
+    }
+    return value;
+  }
+
+  private makeTextStyle(): TextStyle {
+    const style = new TextStyle({
+      fontFamily: this._fontFamily,
+      fontSize: this._fontSize,
+      fontWeight: this._fontWeight,
+      fill: this._color,
+      align: this._align,
+      letterSpacing: this._letterSpacing,
+      wordWrap: this._boxWidth != null,
+      wordWrapWidth: this._boxWidth ?? 100,
+      breakWords: this._breakWords,
+    });
+    if (this._lineHeight != null) style.lineHeight = this._lineHeight;
+    return style;
+  }
+
   private makeText(content: string): Text {
+    const style = this.makeTextStyle();
+
     return new Text({
       text: content,
       // Anchor (0.5, 0.5) so the element's (x, y) marks the CENTER of the glyph run,
@@ -210,13 +349,7 @@ export class TextElement extends BaseElement {
       // Semantics: element.x/y (and toJSON().x/.y) now mean the text CENTER, not its
       // top-left; previously saved top-left positions will visually shift ~half the text size.
       anchor: 0.5,
-      style: new TextStyle({
-        fontFamily: this._fontFamily,
-        fontSize: this._fontSize,
-        fontWeight: this._fontWeight,
-        fill: this._color,
-        align: this._align,
-      }),
+      style,
     });
   }
 
@@ -234,6 +367,13 @@ export class TextElement extends BaseElement {
       fontWeight: this._fontWeight,
       align: this._align,
       color: this._color,
+      lineHeight: this._lineHeight,
+      letterSpacing: this._letterSpacing,
+      boxWidth: this._boxWidth,
+      breakWords: this._breakWords,
+      textTransform: this._textTransform,
+      maxLines: this._maxLines,
+      truncationCharacter: this._truncationCharacter,
       arcPath: this._arcPath ?? undefined,
     };
   }
@@ -245,6 +385,13 @@ export class TextElement extends BaseElement {
     if (data.fontWeight !== undefined) this.fontWeight = data.fontWeight as TextStyleFontWeight;
     if (data.align !== undefined) this.align = data.align as TextStyleAlign;
     if (data.color !== undefined) this.color = data.color as number;
+    if (data.lineHeight !== undefined) this.lineHeight = data.lineHeight as number | null;
+    if (data.letterSpacing !== undefined) this.letterSpacing = data.letterSpacing as number;
+    if (data.boxWidth !== undefined) this.boxWidth = data.boxWidth as number | null;
+    if (data.breakWords !== undefined) this.breakWords = data.breakWords as boolean;
+    if (data.textTransform !== undefined) this.textTransform = data.textTransform as TextTransform;
+    if (data.maxLines !== undefined) this.maxLines = data.maxLines as number | null;
+    if (data.truncationCharacter !== undefined) this.truncationCharacter = data.truncationCharacter as string;
     if ('arcPath' in data) this.arcPath = (data.arcPath as ArcPath | null | undefined) ?? null;
     this.x = data.x;
     this.y = data.y;
@@ -262,6 +409,13 @@ export class TextElement extends BaseElement {
       fontWeight: data.fontWeight as TextStyleFontWeight,
       align: data.align as TextStyleAlign,
       color: data.color as number,
+      lineHeight: data.lineHeight as number | null | undefined,
+      letterSpacing: data.letterSpacing as number | undefined,
+      boxWidth: data.boxWidth as number | null | undefined,
+      breakWords: data.breakWords as boolean | undefined,
+      textTransform: data.textTransform as TextTransform | undefined,
+      maxLines: data.maxLines as number | null | undefined,
+      truncationCharacter: data.truncationCharacter as string | undefined,
     });
     if (data.arcPath) el.arcPath = data.arcPath as ArcPath;
     el.rotation = data.rotation;

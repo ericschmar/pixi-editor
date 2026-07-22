@@ -35,7 +35,6 @@ export class TextElement extends BaseElement {
   private _color: number;
   private _lineHeight: number | null;
   private _letterSpacing: number;
-  private _boxWidth: number | null;
   private _breakWords: boolean;
   private _textTransform: TextTransform;
   private _maxLines: number | null;

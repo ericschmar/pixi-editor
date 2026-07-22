@@ -1,4 +1,4 @@
-import { CanvasTextMetrics, Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
+import { Graphics, Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
 import { BaseElement } from './BaseElement.ts';
 import type { ArcPath, SerializedElement } from '../types.ts';
 
@@ -23,6 +23,9 @@ type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
 export class TextElement extends BaseElement {
   private pixiText: Text | null;
   private charSprites: Text[] = [];
+  private boxProxy: Graphics;
+  private _boxWidth: number | null = null;
+  private _boxHeight: number | null = null;
 
   private _text: string;
   private _fontFamily: string;
@@ -57,9 +60,12 @@ export class TextElement extends BaseElement {
 
     this.pixiText = this.makeText(this.displayText(this._text));
     this.container.addChild(this.pixiText);
+    this.boxProxy = new Graphics();
+    this.container.addChild(this.boxProxy);
 
     this.x = x;
     this.y = y;
+    this.redraw();
   }
 
   // --- Arc path ---
@@ -116,6 +122,7 @@ export class TextElement extends BaseElement {
     if (old === value) return;
     this._align = value;
     if (this.pixiText) (this.pixiText.style as TextStyle).align = value;
+    this.redraw();
     this.emitChange('align', old, value);
   }
 
@@ -197,18 +204,28 @@ export class TextElement extends BaseElement {
 
   override get width(): number {
     if (this._arcPath) return this._arcPath.radius * 2;
-    return this.pixiText?.width ?? 0;
+    return this._boxWidth ?? this.pixiText?.width ?? 0;
   }
-  override set width(_value: number) {
-    // width is determined by content/arc; not directly settable
+  override set width(value: number) {
+    if (this._arcPath) return;
+    const old = this.width;
+    if (old === value) return;
+    this._boxWidth = value;
+    this.redraw();
+    this.emitChange('width', old, value);
   }
 
   override get height(): number {
     if (this._arcPath) return this._arcPath.radius * 2;
-    return this.pixiText?.height ?? 0;
+    return this._boxHeight ?? this.pixiText?.height ?? 0;
   }
-  override set height(_value: number) {
-    // height is determined by content/arc; not directly settable
+  override set height(value: number) {
+    if (this._arcPath) return;
+    const old = this.height;
+    if (old === value) return;
+    this._boxHeight = value;
+    this.redraw();
+    this.emitChange('height', old, value);
   }
 
   protected override redraw(): void {
@@ -234,10 +251,24 @@ export class TextElement extends BaseElement {
       this.pixiText.text = this.displayText(this._text);
       this.pixiText.visible = true;
     }
+
+    const text = this.pixiText!;
+    const bw = this._boxWidth ?? text.width;
+    const bh = this._boxHeight ?? text.height;
+    this.boxProxy.clear();
+    this.boxProxy.rect(0, 0, bw, bh);
+    this.boxProxy.fill({ color: 0xffffff, alpha: 0 });
+    text.position.y = bh / 2;
+    const tw = text.width;
+    text.position.x =
+      this._align === 'left' ? tw / 2
+      : this._align === 'right' ? bw - tw / 2
+      : bw / 2;
   }
 
   private drawArcText(): void {
     const arc = this._arcPath!;
+    this.boxProxy.clear();
 
     // Hide the single text node while arc mode is active
     if (this.pixiText) {
@@ -343,11 +374,9 @@ export class TextElement extends BaseElement {
 
     return new Text({
       text: content,
-      // Anchor (0.5, 0.5) so the element's (x, y) marks the CENTER of the glyph run,
-      // consistent with ShapeElement.line/arc which are centered on (x, y). Arc-text
-      // sprites override this via sprite.anchor.set() after creation, so it's a no-op there.
-      // Semantics: element.x/y (and toJSON().x/.y) now mean the text CENTER, not its
-      // top-left; previously saved top-left positions will visually shift ~half the text size.
+      // Anchor (0.5, 0.5) so drawNormalText can place the glyph by its center within the
+      // box (position.x/position.y). Arc-text sprites override this via sprite.anchor.set()
+      // after creation, so it's a no-op there. Element x/y mean the box top-left.
       anchor: 0.5,
       style,
     });
@@ -393,6 +422,8 @@ export class TextElement extends BaseElement {
     if (data.maxLines !== undefined) this.maxLines = data.maxLines as number | null;
     if (data.truncationCharacter !== undefined) this.truncationCharacter = data.truncationCharacter as string;
     if ('arcPath' in data) this.arcPath = (data.arcPath as ArcPath | null | undefined) ?? null;
+    if (data.width !== undefined) this.width = data.width as number;
+    if (data.height !== undefined) this.height = data.height as number;
     this.x = data.x;
     this.y = data.y;
     this.rotation = data.rotation;
@@ -418,6 +449,8 @@ export class TextElement extends BaseElement {
       truncationCharacter: data.truncationCharacter as string | undefined,
     });
     if (data.arcPath) el.arcPath = data.arcPath as ArcPath;
+    if (data.width !== undefined) el.width = data.width as number;
+    if (data.height !== undefined) el.height = data.height as number;
     el.rotation = data.rotation;
     el.zIndex = data.zIndex;
     el.visible = data.visible;

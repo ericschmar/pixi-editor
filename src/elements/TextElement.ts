@@ -1,4 +1,4 @@
-import { Graphics, Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
+import { CanvasTextMetrics, Graphics, Text, TextStyle, type TextStyleFontWeight } from 'pixi.js';
 import { BaseElement } from './BaseElement.ts';
 import type { ArcPath, SerializedElement } from '../types.ts';
 

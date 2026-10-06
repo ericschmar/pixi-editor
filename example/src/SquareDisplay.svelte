@@ -11,19 +11,15 @@
     } from 'pixi-watchface-engine';
     import type { DisplayGeometry } from 'pixi-watchface-engine';
 
-    // The public shape is a rectangle with equal logical dimensions: no device
-    // profile or Garmin-specific assumptions are needed for a square face.
-    const squareDisplay: DisplayGeometry = {
-        shape: 'rectangle',
-        width: 400,
-        height: 400,
-    };
-
     const editorSize = 800;
     const editorInset = 32;
+    const displaySize = 400;
     let canvasContainer: HTMLDivElement;
     let engine: WatchfaceEngine;
-    let fittedScale = 1;
+    let isCircle = $state(false);
+    let fittedScale = $state(1);
+    let displayMask: Graphics | undefined;
+    let frame: Graphics | undefined;
 
     onMount(async () => {
         engine = new WatchfaceEngine();
@@ -34,34 +30,7 @@
             coordinateOrigin: 'center',
         });
 
-        // Fit the logical square into the editor viewport with equal padding.
-        // The fitted rectangle is editor-space; it does not redefine the face.
-        const viewport = fitDisplayGeometry(squareDisplay, {
-            x: editorInset,
-            y: editorInset,
-            width: editorSize - editorInset * 2,
-            height: editorSize - editorInset * 2,
-        });
-        const viewportCenter = displayToViewportPoint(
-            { x: 0, y: 0 },
-            squareDisplay,
-            viewport,
-            'center',
-        );
-        const contentRoot = engine.getContentRoot();
-        contentRoot.position.set(viewportCenter.x, viewportCenter.y);
-        contentRoot.scale.set(viewport.scale);
-        fittedScale = viewport.scale;
-
-        // Clip rendered face content to the square display boundary.
-        applyDisplayMask(engine.getElementsLayer(), squareDisplay, 'center');
-
-        // Draw the fitted preview edge in editor space, outside the masked face.
-        const frame = new Graphics();
-        frame.rect(viewport.x, viewport.y, viewport.width, viewport.height);
-        frame.stroke({ color: 0x7c5cbf, width: 2 });
-        engine.app.stage.addChild(frame);
-
+        updateDisplayGeometry();
         loadSquareFace();
     });
 
@@ -115,20 +84,80 @@
         batteryLabel.y += batteryLabel.height / 2;
         engine.elements.add(batteryLabel);
     }
+
+    function toggleShape() {
+        isCircle = !isCircle;
+        updateDisplayGeometry();
+    }
+
+    function updateDisplayGeometry() {
+        if (!engine) return;
+
+        // Both modes use the same device-independent logical dimensions. Fit
+        // the face uniformly, then let the selected shape define its clipping.
+        const display: DisplayGeometry = {
+            shape: isCircle ? 'circle' : 'rectangle',
+            width: displaySize,
+            height: displaySize,
+        };
+        const viewport = fitDisplayGeometry(display, {
+            x: editorInset,
+            y: editorInset,
+            width: editorSize - editorInset * 2,
+            height: editorSize - editorInset * 2,
+        });
+        const viewportCenter = displayToViewportPoint(
+            { x: 0, y: 0 },
+            display,
+            viewport,
+            'center',
+        );
+        const contentRoot = engine.getContentRoot();
+        contentRoot.position.set(viewportCenter.x, viewportCenter.y);
+        contentRoot.scale.set(viewport.scale);
+        fittedScale = viewport.scale;
+
+        const elementsLayer = engine.getElementsLayer();
+        if (displayMask) {
+            elementsLayer.mask = null;
+            elementsLayer.removeChild(displayMask);
+            displayMask.destroy();
+        }
+        displayMask = applyDisplayMask(elementsLayer, display, 'center');
+
+        // The frame lives in editor space, outside the masked face contents.
+        if (frame) {
+            engine.app.stage.removeChild(frame);
+            frame.destroy();
+        }
+        frame = new Graphics();
+        if (display.shape === 'circle') {
+            frame.circle(
+                viewport.x + viewport.width / 2,
+                viewport.y + viewport.height / 2,
+                viewport.width / 2,
+            );
+        } else {
+            frame.rect(viewport.x, viewport.y, viewport.width, viewport.height);
+        }
+        frame.stroke({ color: 0x7c5cbf, width: 2 });
+        engine.app.stage.addChild(frame);
+    }
 </script>
 
 <svelte:head>
-    <title>Square display geometry — Pixi Watchface Engine</title>
+    <title>Square and circle display geometry — Pixi Watchface Engine</title>
 </svelte:head>
 
 <main>
     <header>
         <a href="/">← Editor example</a>
         <p class="eyebrow">Generic display geometry</p>
-        <h1>Square watch face</h1>
+        <h1>Square and circle watch face</h1>
         <p class="intro">
-            A logical 400 × 400 square fitted into an 800 × 800 editor viewport.
-            The face stays device-independent while the preview scales uniformly.
+            Switch between square and circular geometry in the same logical
+            400 × 400 space. The face stays device-independent while the preview
+            scales uniformly.
         </p>
     </header>
 
@@ -136,14 +165,22 @@
         <div class="preview" bind:this={canvasContainer}></div>
         <aside>
             <h2>Display setup</h2>
+            <button
+                class="shape-toggle"
+                type="button"
+                aria-pressed={isCircle}
+                onclick={toggleShape}
+            >
+                Circle preview {isCircle ? 'on' : 'off'}
+            </button>
             <dl>
                 <div>
                     <dt>Shape</dt>
-                    <dd>rectangle · square profile</dd>
+                    <dd>{isCircle ? 'circle' : 'rectangle'} · {isCircle ? 'round' : 'square'} profile</dd>
                 </div>
                 <div>
                     <dt>Logical size</dt>
-                    <dd>{squareDisplay.width} × {squareDisplay.height}</dd>
+                    <dd>{displaySize} × {displaySize}</dd>
                 </div>
                 <div>
                     <dt>Fit scale</dt>
@@ -157,7 +194,7 @@
             <p>
                 <code>fitDisplayGeometry</code> centers the face without stretching;
                 <code>applyDisplayMask</code> clips its rendered elements to the
-                square boundary.
+                selected shape boundary.
             </p>
         </aside>
     </section>
@@ -251,6 +288,28 @@
         margin: 0 0 16px;
         color: #c0c0e0;
         font-size: 0.9rem;
+    }
+
+    .shape-toggle {
+        width: 100%;
+        margin: 0 0 18px;
+        padding: 10px 12px;
+        border: 1px solid #7c5cbf;
+        border-radius: 6px;
+        background: #292943;
+        color: #e0e0e0;
+        font: inherit;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .shape-toggle:hover {
+        background: #383454;
+    }
+
+    .shape-toggle:focus-visible {
+        outline: 2px solid #c4b5fd;
+        outline-offset: 3px;
     }
 
     dl {

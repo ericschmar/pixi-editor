@@ -6,6 +6,12 @@ export default defineConfig({
   plugins: [svelte()],
   build: {
     target: 'esnext', // required for top-level await (used by PixiJS v8)
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        square: resolve(__dirname, 'square.html'),
+      },
+    },
   },
   resolve: {
     alias: {

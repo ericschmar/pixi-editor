@@ -308,6 +308,7 @@
 
 <main>
     <h1>Pixi Watchface Engine</h1>
+    <a class="geometry-link" href="/square.html">Square display geometry example →</a>
 
     <div class="layout">
         <!-- Left panel -->
@@ -474,6 +475,18 @@
         font-weight: 600;
         color: #a78bfa;
         letter-spacing: 0.05em;
+    }
+
+    .geometry-link {
+        display: inline-block;
+        margin: 8px 0 16px;
+        color: #a78bfa;
+        font-size: 0.85rem;
+        text-decoration: none;
+    }
+
+    .geometry-link:hover {
+        text-decoration: underline;
     }
 
     .layout {

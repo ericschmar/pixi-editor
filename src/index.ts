@@ -47,6 +47,24 @@ export type {
   Bounds,
 } from "./types.ts";
 
+// Display geometry
+export {
+  applyDisplayMask,
+  createDisplayMask,
+  displayToViewportPoint,
+  fitDisplayGeometry,
+  getDisplayBounds,
+  isPointInDisplay,
+  validateDisplayGeometry,
+  viewportToDisplayPoint,
+} from "./geometry/DisplayGeometry.ts";
+export type {
+  DisplayGeometry,
+  DisplayPoint,
+  DisplayShape,
+  DisplayViewport,
+} from "./geometry/DisplayGeometry.ts";
+
 // EventBus
 export { EventBus } from "./EventBus.ts";
 export type { EngineEventMap } from "./EventBus.ts";

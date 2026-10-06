@@ -9,6 +9,7 @@
 5. [Plugins](#plugins)
 6. [Events](#events)
 7. [Types](#types)
+8. [Display Geometry](#display-geometry)
 
 ---
 
@@ -731,6 +732,34 @@ interface Bounds {
   height: number;
 }
 ```
+
+---
+
+## Display Geometry
+
+Display geometry describes the face's logical shape and dimensions separately
+from the editor's pixel dimensions. The geometry helpers are device-independent;
+they accept circular and rectangular profiles without inferring a shape.
+
+```typescript
+const geometry = { shape: 'rectangle', width: 448, height: 486 } as const;
+const fitted = fitDisplayGeometry(geometry, {
+  x: 0, y: 0, width: 600, height: 600, // editor bounds, not logical face size
+});
+const editorPoint = displayToViewportPoint(
+  { x: 224, y: 243 }, geometry, fitted,
+);
+const hit = isPointInDisplay({ x: 0, y: 0 }, geometry); // true for rectangles
+```
+
+`fitDisplayGeometry` centers the logical display in editor bounds and uses one
+uniform scale. `displayToViewportPoint` and `viewportToDisplayPoint` convert
+coordinates while preserving either the default `top-left` or `center` origin.
+`isPointInDisplay` uses rectangular bounds or the circular visible boundary.
+`createDisplayMask` creates a Pixi `Graphics` mask for the same shape;
+`applyDisplayMask` attaches one to a container and returns it for cleanup.
+Circular profiles must have equal positive width and height. Invalid dimensions
+and unknown shapes throw instead of silently selecting a default.
 
 ---
 

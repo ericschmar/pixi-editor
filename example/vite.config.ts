@@ -9,7 +9,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
-        square: resolve(__dirname, 'square.html'),
       },
     },
   },

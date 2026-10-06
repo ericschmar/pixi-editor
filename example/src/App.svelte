@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
+    import { Graphics } from "pixi.js";
     import {
         WatchfaceEngine,
         TextElement,
@@ -10,7 +11,10 @@
         KeyboardShortcutsPlugin,
         ViewportPlugin,
         AlignmentGuidesPlugin,
+        applyDisplayMask,
+        getDisplayBounds,
     } from "pixi-watchface-engine";
+    import type { DisplayGeometry } from "pixi-watchface-engine";
 
     // ── State ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +28,9 @@
     let selectedHasShape = $state(false);
     let zoomLevel = $state(1);
     let mouseWheelZoom = $state(true);
+    let isCircle = $state(false);
+
+    const displaySize = 500;
 
     // ── Engine refs (not reactive — PixiJS manages these) ─────────────────────
 
@@ -31,6 +38,9 @@
     let grid: GridPlugin;
     let undoRedo: UndoRedoPlugin;
     let viewport: ViewportPlugin;
+    let displayBackground: Graphics | undefined;
+    let elementsMask: Graphics | undefined;
+    let selectionMask: Graphics | undefined;
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -72,6 +82,8 @@
                 threshold: 4, // optional, world-space pixels
             }),
         );
+
+        updateDisplayShape();
 
         engine.eventBus.on("viewport:zoomed", ({ zoom }) => {
             zoomLevel = zoom;
@@ -196,6 +208,53 @@
         status = `Snap-to-grid ${snapEnabled ? "on" : "off"}`;
     }
 
+    function toggleDisplayShape() {
+        isCircle = !isCircle;
+        updateDisplayShape();
+    }
+
+    function updateDisplayShape() {
+        if (!engine?.initialized) return;
+
+        const display: DisplayGeometry = {
+            shape: isCircle ? "circle" : "rectangle",
+            width: displaySize,
+            height: displaySize,
+        };
+        const bounds = getDisplayBounds(display, "center");
+
+        if (displayBackground) {
+            const layer = engine.getBackgroundLayer();
+            layer.removeChild(displayBackground);
+            displayBackground.destroy();
+        }
+        displayBackground = new Graphics();
+        if (display.shape === "circle") {
+            displayBackground.circle(0, 0, displaySize / 2);
+        } else {
+            displayBackground.rect(bounds.x, bounds.y, bounds.width, bounds.height);
+        }
+        displayBackground.fill({ color: 0x10101b });
+        displayBackground.stroke({ color: 0x7c5cbf, width: 3 });
+        engine.getBackgroundLayer().addChild(displayBackground);
+
+        if (elementsMask) {
+            const layer = engine.getElementsLayer();
+            layer.mask = null;
+            layer.removeChild(elementsMask);
+            elementsMask.destroy();
+        }
+        elementsMask = applyDisplayMask(engine.getElementsLayer(), display, "center");
+
+        if (selectionMask) {
+            const layer = engine.getSelectionLayer();
+            layer.mask = null;
+            layer.removeChild(selectionMask);
+            selectionMask.destroy();
+        }
+        selectionMask = applyDisplayMask(engine.getSelectionLayer(), display, "center");
+    }
+
     function deleteSelected() {
         const selected = engine.selection.getSelected();
         if (selected.length === 0) {
@@ -308,11 +367,23 @@
 
 <main>
     <h1>Pixi Watchface Engine</h1>
-    <a class="geometry-link" href="/square.html">Square display geometry example →</a>
 
     <div class="layout">
         <!-- Left panel -->
         <div class="panel">
+            <section>
+                <h2>Watch Face</h2>
+                <button
+                    type="button"
+                    class:active={isCircle}
+                    aria-pressed={isCircle}
+                    onclick={toggleDisplayShape}
+                >
+                    Switch to {isCircle ? "square" : "circle"} face
+                </button>
+                <p class="status">Current shape: {isCircle ? "circle" : "square"}</p>
+            </section>
+
             <section>
                 <h2>Add Elements</h2>
                 <div class="btn-group">
@@ -475,18 +546,6 @@
         font-weight: 600;
         color: #a78bfa;
         letter-spacing: 0.05em;
-    }
-
-    .geometry-link {
-        display: inline-block;
-        margin: 8px 0 16px;
-        color: #a78bfa;
-        font-size: 0.85rem;
-        text-decoration: none;
-    }
-
-    .geometry-link:hover {
-        text-decoration: underline;
     }
 
     .layout {

@@ -162,6 +162,7 @@ export class TextElement extends BaseElement {
       s.wordWrap = value != null;
       s.wordWrapWidth = value ?? 100;
     });
+    this.redraw();
     this.emitChange('boxWidth', old, value);
   }
 

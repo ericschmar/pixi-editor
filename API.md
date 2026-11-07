@@ -173,6 +173,7 @@ element.interactable = true;        // boolean (false = not selectable)
 element.opacity = 0.8;              // 0-1
 element.width = 100;                // number (element-specific)
 element.height = 200;               // number (element-specific)
+element.metadata = { app: { tag: 'example' } }; // ElementMetadata | undefined
 ```
 
 #### Methods
@@ -182,6 +183,40 @@ element.getDisplayObject(): Container;
 element.toJSON(): SerializedElement;
 element.applyJSON(data: SerializedElement): void;
 ```
+
+`id` is stable for an element's lifetime. Built-in `fromJSON` codecs retain the saved
+ID; `applyJSON` never changes an existing ID. Missing legacy fields retain constructor
+defaults. Common canonical fields, metadata and display scales round-trip through all
+built-in codecs. Clipboard snapshots isolate metadata; each paste uses a new ID.
+
+#### Opaque metadata
+
+`metadata: ElementMetadata | undefined` is optional application-owned JSON data. Setting
+`undefined` removes it. Assignment, getters, serialization and automatic history actions
+each take defensive deep copies, so mutating an input, returned object or event payload
+cannot mutate canonical data or history. Metadata changes are ordinary authoring changes.
+The root must be a plain JSON object; nested plain objects, dense arrays, strings,
+booleans, null and finite numbers are accepted. Cycles, accessors, symbols, functions,
+undefined members, non-finite numbers and non-JSON class instances throw `TypeError`
+without changing metadata. No engine semantics are inferred from metadata keys.
+
+#### Transient presentation
+
+```typescript
+element.setPresentation({ rotationOffset: Math.PI / 2, visible: false }): void;
+element.clearPresentation(): void;
+element.effectiveRotation; // canonical rotation + offset (default 0)
+element.effectiveVisible;  // canonical visible AND override (default true)
+```
+
+`setPresentation(presentation: ElementPresentation): void` merges supplied fields;
+omitted/undefined fields leave existing overrides alone. Rotation offsets must be finite
+radians and visibility overrides must be boolean. `clearPresentation()` removes all
+overrides. Canonical rotation/visibility getters, `toJSON`, autosave and history remain
+unchanged; authoring setters continue to compose with any override. Only the
+`element:presentationChanged` notification fires for an actual override change. Selection
+visuals do not yet subscribe to this notification; presentation-aware selection geometry
+is a separate phase. This is not a pivot or animation controller API.
 
 ### TextElement
 
@@ -226,8 +261,10 @@ text.zIndex = 1;
 text.visible = true;
 text.interactable = true;
 text.opacity = 1;
-text.width;   // read-only, determined by text content
-text.height;  // read-only, determined by text content
+text.width = 120;  // explicit layout width; boxWidth = null restores automatic width
+text.height = 50;  // explicit layout height; boxHeight = null restores automatic height
+text.boxWidth;    // number | null
+text.boxHeight;   // number | null
 ```
 
 ### ImageElement
@@ -252,7 +289,7 @@ engine.elements.add(image);
 image.src = '/new/image.png';  // async loads new texture
 image.width = 100;
 image.height = 100;
-image.loaded;  // boolean, whether texture is loaded
+image.loaded;  // read-only boolean, whether the current texture request completed
 
 // All base element properties
 image.x = 150;
@@ -263,6 +300,12 @@ image.visible = true;
 image.interactable = true;
 image.opacity = 0.9;
 ```
+
+Image codecs restore authored width/height (including zero) before asynchronous loading;
+those dimensions survive texture completion. Old requests cannot replace newer sources.
+Completion emits `element:resourceChanged` with `property: 'loaded'` rather than an
+undoable property action. Image load errors are still warnings; texture disposal, loading
+lifecycle redesign and pivots are outside this contract.
 
 ### ShapeElement
 
@@ -440,6 +483,19 @@ const element = engine.serialization.deserializeElement(data);
 const registry = engine.serialization.getRegistry();
 ```
 
+`deserialize(json: string): void` is synchronous. Version-1 output and stable ascending
+z-index serialization order are unchanged. Before clearing the live document, import
+validates the envelope, common fields, metadata, built-in shape/text/image payloads and
+unique non-empty IDs, then constructs all elements. Validation/constructor errors leave
+the previous document and selection untouched. A missing version means version 1;
+missing canvas dimensions and optional legacy element fields are accepted, and missing
+IDs are generated. Explicit unsupported versions and malformed fields are rejected.
+Unknown element types still warn and are skipped for compatibility. Canvas dimensions
+remain descriptive; loading does not resize the engine. This preflight is not rollback
+for errors thrown by application event listeners during final installation, nor validation
+of custom type-specific payloads. Existing history is not automatically cleared on import;
+applications replacing documents should explicitly clear history after success.
+
 ### InteractionManager
 
 **Internal use.** Routes pointer events from elements to SelectionManager.
@@ -535,6 +591,50 @@ ur.canRedo;  // boolean
 ur.clear();  // Clear history
 ```
 
+#### Synchronous history scopes
+
+```typescript
+ur.suspend<T>(fn: () => T): T;
+ur.batch<T>(description: string, fn: () => T): T;
+
+ur.suspend(() => { element.rotation = 1; });
+ur.batch('Edit objects', () => {
+  first.x += 10;
+  second.x += 10;
+});
+```
+
+- `suspend` is synchronous, nestable and exception-safe. It suppresses recording of both
+  automatic property actions and explicit `action:performed` actions without clearing redo.
+  Canonical `element:changed` events still fire. It does not restore edited state.
+- `batch` collects existing automatic and explicit `UndoableAction`s into one history
+  entry, undoing in reverse order and redoing in forward order. It returns the callback's
+  result. An empty batch changes neither stack. Nested batches join the outer batch;
+  they are not independent savepoints (a caught inner error remains part of the outer batch).
+- An escaping callback error reverses recorded actions under suspension, leaves the
+  existing undo/redo stacks intact and rethrows. If rollback itself fails, an `AggregateError`
+  contains the callback and rollback errors. A batch inside suspension does not record or
+  roll back unrecorded edits. Do not pass async callbacks: scopes cover the synchronous
+  callback execution only, not later promise continuations.
+- Successful non-empty recording clears redo. `maxHistory` is a non-negative integer
+  (default 100; zero disables stored undo steps); a batch counts as one step.
+- Undo/redo move an action between stacks only after its callback succeeds. Throws retain
+  the action on its original stack and always restore suppression. `undo`, `redo` and
+  `clear` cannot be called inside a batch or another undo/redo callback.
+
+**Reversible-action contract:** actions describe already-performed work. Their synchronous
+`undo`/`redo` callbacks must faithfully reverse/reapply their own state, including any
+application sidecar, and should not partially mutate then throw. History cannot magically
+roll back arbitrary external side effects or a partially failing callback. The engine only
+rolls back recorded actions, not arbitrary callback mutations. Exceptions from canonical
+change listeners can interrupt recording and are the application's responsibility.
+
+`ElementManager.add/remove` remain deliberately non-recording. For a compound insertion,
+perform the add/remove and sidecar changes, then emit one explicit `action:performed`
+action with matching inverse callbacks. This mechanism remains compatible with batches
+and suspension; subsequent ordinary property edits are separate undo steps. A batch by
+itself does not make unrecorded element additions undoable.
+
 ### KeyboardShortcutsPlugin
 
 Keyboard shortcuts. Automatically detects platform (Cmd on macOS, Ctrl elsewhere).
@@ -606,6 +706,8 @@ unsub();  // Unsubscribe
 engine.eventBus.on('element:added', ({ element }) => {});
 engine.eventBus.on('element:removed', ({ element }) => {});
 engine.eventBus.on('element:changed', ({ element, property, oldValue, newValue }) => {});
+engine.eventBus.on('element:presentationChanged', ({ element }) => {});
+engine.eventBus.on('element:resourceChanged', ({ element, property, oldValue, newValue }) => {});
 engine.eventBus.on('element:zChanged', ({ element, oldZ, newZ }) => {});
 ```
 
@@ -695,6 +797,7 @@ interface SerializedElement {
   visible: boolean;
   interactable: boolean;
   opacity: number;
+  metadata?: ElementMetadata;
   [key: string]: unknown;  // Element-specific fields
 }
 ```
@@ -715,6 +818,13 @@ interface WatchfaceState {
 ### Type Aliases
 
 ```typescript
+type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
+type ElementMetadata = { [key: string]: JSONValue };
+interface ElementPresentation {
+  rotationOffset?: number;
+  visible?: boolean;
+}
+
 type FillDirection = 'left-to-right' | 'right-to-left' | 'top-to-bottom' | 'bottom-to-top';
 type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc';
 type ElementType = 'text' | 'image' | 'shape';

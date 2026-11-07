@@ -29,8 +29,9 @@ export class ShapeElement extends BaseElement {
       strokeWidth: number;
       lineCap: LineCap;
     }>,
+    id?: string,
   ) {
-    super('shape');
+    super('shape', id);
     this._shapeType = shapeType;
     this._shapeParams = { ...params };
     this._foregroundColor = options?.foregroundColor ?? 0xffffff;
@@ -326,13 +327,7 @@ export class ShapeElement extends BaseElement {
     if (data.fillDirection !== undefined) this.fillDirection = data.fillDirection as FillDirection;
     if (data.strokeWidth !== undefined) this.strokeWidth = data.strokeWidth as number;
     if (data.lineCap !== undefined) this.lineCap = data.lineCap as LineCap;
-    this.x = data.x;
-    this.y = data.y;
-    this.rotation = data.rotation;
-    this.zIndex = data.zIndex;
-    this.visible = data.visible;
-    this.interactable = data.interactable;
-    this.opacity = data.opacity;
+    this.applyBaseJSON(data);
   }
 
   static fromJSON(data: SerializedElement): ShapeElement {
@@ -344,14 +339,8 @@ export class ShapeElement extends BaseElement {
       fillDirection: data.fillDirection as FillDirection,
       strokeWidth: data.strokeWidth as number,
       lineCap: data.lineCap as LineCap | undefined,
-    });
-    el.x = data.x;
-    el.y = data.y;
-    el.rotation = data.rotation;
-    el.zIndex = data.zIndex;
-    el.visible = data.visible;
-    el.interactable = data.interactable;
-    el.opacity = data.opacity;
+    }, data.id);
+    el.applyBaseJSON(data);
     return el;
   }
 }

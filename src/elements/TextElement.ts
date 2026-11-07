@@ -41,8 +41,8 @@ export class TextElement extends BaseElement {
   private _truncationCharacter: string;
   private _arcPath: ArcPath | null = null;
 
-  constructor(text: string, x: number, y: number, style?: TextElementStyle) {
-    super('text');
+  constructor(text: string, x: number, y: number, style?: TextElementStyle, id?: string) {
+    super('text', id);
     this._text = text;
     this._fontFamily = style?.fontFamily ?? 'Arial';
     this._fontSize = style?.fontSize ?? 24;
@@ -164,6 +164,15 @@ export class TextElement extends BaseElement {
     });
     this.redraw();
     this.emitChange('boxWidth', old, value);
+  }
+
+  get boxHeight(): number | null { return this._boxHeight; }
+  set boxHeight(value: number | null) {
+    const old = this._boxHeight;
+    if (old === value) return;
+    this._boxHeight = value;
+    this.redraw();
+    this.emitChange('boxHeight', old, value);
   }
 
   get breakWords(): boolean { return this._breakWords; }
@@ -399,6 +408,7 @@ export class TextElement extends BaseElement {
       lineHeight: this._lineHeight,
       letterSpacing: this._letterSpacing,
       boxWidth: this._boxWidth,
+      boxHeight: this._boxHeight,
       breakWords: this._breakWords,
       textTransform: this._textTransform,
       maxLines: this._maxLines,
@@ -422,19 +432,15 @@ export class TextElement extends BaseElement {
     if (data.maxLines !== undefined) this.maxLines = data.maxLines as number | null;
     if (data.truncationCharacter !== undefined) this.truncationCharacter = data.truncationCharacter as string;
     if ('arcPath' in data) this.arcPath = (data.arcPath as ArcPath | null | undefined) ?? null;
-    if (data.width !== undefined) this.width = data.width as number;
-    if (data.height !== undefined) this.height = data.height as number;
-    this.x = data.x;
-    this.y = data.y;
-    this.rotation = data.rotation;
-    this.zIndex = data.zIndex;
-    this.visible = data.visible;
-    this.interactable = data.interactable;
-    this.opacity = data.opacity;
+    if (!('boxWidth' in data) && data.width !== undefined) this.width = data.width;
+    if ('boxHeight' in data) {
+      this.boxHeight = data.boxHeight as number | null;
+    } else if (data.height !== undefined) this.height = data.height;
+    this.applyBaseJSON(data);
   }
 
   static fromJSON(data: SerializedElement): TextElement {
-    const el = new TextElement(data.text as string, data.x, data.y, {
+    const el = new TextElement(data.text as string, data.x ?? 0, data.y ?? 0, {
       fontFamily: data.fontFamily as string,
       fontSize: data.fontSize as number,
       fontWeight: data.fontWeight as TextStyleFontWeight,
@@ -447,15 +453,8 @@ export class TextElement extends BaseElement {
       textTransform: data.textTransform as TextTransform | undefined,
       maxLines: data.maxLines as number | null | undefined,
       truncationCharacter: data.truncationCharacter as string | undefined,
-    });
-    if (data.arcPath) el.arcPath = data.arcPath as ArcPath;
-    if (data.width !== undefined) el.width = data.width as number;
-    if (data.height !== undefined) el.height = data.height as number;
-    el.rotation = data.rotation;
-    el.zIndex = data.zIndex;
-    el.visible = data.visible;
-    el.interactable = data.interactable;
-    el.opacity = data.opacity;
+    }, data.id);
+    el.applyJSON(data);
     return el;
   }
 }

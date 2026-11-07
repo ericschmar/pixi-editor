@@ -8,6 +8,8 @@ export interface EngineEventMap {
   'element:added': { element: BaseElement };
   'element:removed': { element: BaseElement };
   'element:changed': { element: BaseElement; property: string; oldValue: unknown; newValue: unknown };
+  'element:presentationChanged': { element: BaseElement };
+  'element:resourceChanged': { element: BaseElement; property: string; oldValue: unknown; newValue: unknown };
   'element:zChanged': { element: BaseElement; oldZ: number; newZ: number };
 
   'selection:changed': { selected: BaseElement[] };

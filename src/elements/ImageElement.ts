@@ -6,9 +6,12 @@ export class ImageElement extends BaseElement {
   private sprite: Sprite;
   private _src: string;
   private _loaded = false;
+  private authoredWidth: number | null = null;
+  private authoredHeight: number | null = null;
+  private loadGeneration = 0;
 
-  constructor(src: string, x: number, y: number) {
-    super('image');
+  constructor(src: string, x: number, y: number, id?: string) {
+    super('image', id);
     this._src = src;
     this.sprite = new Sprite(Texture.EMPTY);
     this.sprite.anchor.set(0);
@@ -19,12 +22,18 @@ export class ImageElement extends BaseElement {
   }
 
   private loadTexture(src: string): void {
+    const generation = ++this.loadGeneration;
     const img = new Image();
     img.onload = () => {
+      if (generation !== this.loadGeneration) return;
       const texture = new Texture({ source: new ImageSource({ resource: img }) });
       this.sprite.texture = texture;
+      if (this.authoredWidth !== null) this.sprite.width = this.authoredWidth;
+      if (this.authoredHeight !== null) this.sprite.height = this.authoredHeight;
       this._loaded = true;
-      this.emitChange('loaded', false, true);
+      this.engine?.eventBus.emit('element:resourceChanged', {
+        element: this, property: 'loaded', oldValue: false, newValue: true,
+      });
     };
     img.onerror = () => {
       console.warn(`Failed to load image: ${src}`);
@@ -47,6 +56,7 @@ export class ImageElement extends BaseElement {
   override get width(): number { return this.sprite.width; }
   override set width(value: number) {
     const old = this.sprite.width;
+    this.authoredWidth = value;
     if (old === value) return;
     this.sprite.width = value;
     this.emitChange('width', old, value);
@@ -55,6 +65,7 @@ export class ImageElement extends BaseElement {
   override get height(): number { return this.sprite.height; }
   override set height(value: number) {
     const old = this.sprite.height;
+    this.authoredHeight = value;
     if (old === value) return;
     this.sprite.height = value;
     this.emitChange('height', old, value);
@@ -73,24 +84,14 @@ export class ImageElement extends BaseElement {
 
   override applyJSON(data: SerializedElement): void {
     if (data.src !== undefined) this.src = data.src as string;
-    this.x = data.x;
-    this.y = data.y;
-    if (data.width) this.width = data.width;
-    if (data.height) this.height = data.height;
-    this.rotation = data.rotation;
-    this.zIndex = data.zIndex;
-    this.visible = data.visible;
-    this.interactable = data.interactable;
-    this.opacity = data.opacity;
+    if (data.width !== undefined) this.width = data.width;
+    if (data.height !== undefined) this.height = data.height;
+    this.applyBaseJSON(data);
   }
 
   static fromJSON(data: SerializedElement): ImageElement {
-    const el = new ImageElement(data.src as string, data.x, data.y);
-    el.rotation = data.rotation;
-    el.zIndex = data.zIndex;
-    el.visible = data.visible;
-    el.interactable = data.interactable;
-    el.opacity = data.opacity;
+    const el = new ImageElement(data.src as string, data.x ?? 0, data.y ?? 0, data.id);
+    el.applyJSON(data);
     return el;
   }
 }

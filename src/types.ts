@@ -24,6 +24,15 @@ export interface ArcPath {
 
 export type ElementType = 'text' | 'image' | 'shape';
 
+/** Opaque application-owned data, restricted to finite, plain JSON values. */
+export type JSONValue = null | boolean | number | string | JSONValue[] | { [key: string]: JSONValue };
+export type ElementMetadata = { [key: string]: JSONValue };
+
+export interface ElementPresentation {
+  rotationOffset?: number;
+  visible?: boolean;
+}
+
 export interface SerializedElement {
   type: ElementType;
   id: string;
@@ -38,6 +47,7 @@ export interface SerializedElement {
   visible: boolean;
   interactable: boolean;
   opacity: number;
+  metadata?: ElementMetadata;
   [key: string]: unknown;
 }
 

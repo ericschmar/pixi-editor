@@ -215,8 +215,8 @@ radians and visibility overrides must be boolean. `clearPresentation()` removes 
 overrides. Canonical rotation/visibility getters, `toJSON`, autosave and history remain
 unchanged; authoring setters continue to compose with any override. Only the
 `element:presentationChanged` notification fires for an actual override change. Selection
-visuals do not yet subscribe to this notification; presentation-aware selection geometry
-is a separate phase. This is not a pivot or animation controller API.
+bounds, hit testing and transform handles follow effective presentation; transient visibility
+also excludes hidden elements from marquee selection. This is not a pivot or animation controller API.
 
 ### TextElement
 

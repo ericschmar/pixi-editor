@@ -42,6 +42,18 @@ export class ElementManager {
     this.eventBus.emit('element:removed', { element });
   }
 
+  /** @internal Restore canonical map/display order without detaching retained elements. */
+  _restoreOrder(order: readonly BaseElement[]): void {
+    const current = new Set(this.elements.values());
+    const ordered = [...new Set(order.filter(element => current.has(element)))];
+    const retained = new Set(ordered);
+    ordered.push(...this.getAll().filter(element => !retained.has(element)));
+    this.elements = new Map(ordered.map(element => [element.id, element]));
+    if (this.elementsLayer) {
+      ordered.forEach((element, index) => this.elementsLayer!.setChildIndex(element.getDisplayObject(), index));
+    }
+  }
+
   getById(id: string): BaseElement | undefined {
     return this.elements.get(id);
   }

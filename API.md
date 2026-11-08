@@ -480,6 +480,66 @@ engine.selection.nudgeSelected(10, 20);  // 10px right, 20px down
 - **Delete/Backspace**: Delete selected
 - **Arrow keys**: Nudge selected (Shift for 10px)
 
+#### Generic interaction geometry and history
+
+Selection and pointer transforms are generic editor operations: application metadata,
+clock-hand roles, device/export formats and other domain semantics remain application-owned.
+No application-side transform or undo stack is required.
+
+- Single-selection outlines and handles use the element's offset local bounds, canonical
+  scale and `effectiveRotation`. Multi-selection uses the tight world-axis-aligned union
+  of those transformed bounds. Marquee intersection tests the rotated bound, not just
+  its world AABB. Effectively hidden elements are excluded from visuals and pointer
+  selection. Canonical, presentation and resource notifications refresh selected bounds;
+  silent canonical display-scale changes are observed on the next application ticker
+  update. Presentation-only updates do not author fields or create undo entries.
+- World coordinates are relative to the engine's content root, independent of viewport
+  pan/zoom or `coordinateOrigin`. Rotation is around authored `(x, y)`, not the bounding
+  box center. Existing element-origin conventions are unchanged: a top-left rectangle
+  or text box does not become center-origin. Offset bounds (including an image pivot)
+  remain offset. Multi-element rotation retains a shared world-bounds center.
+- Resize pointer deltas are inverse-rotated into the displayed element's local axes and
+  account for canonical scale. The opposite world edge/corner stays fixed. Resizing an
+  offset/pivoted bound therefore **can move authored `(x, y)`**. Element width/height
+  setters still define supported sizes (for example, coupled circle dimensions and
+  non-resizable arc text); selection does not introduce domain-specific sizing rules.
+- A completed move, resize or rotate gesture emits one generic `action:performed` action,
+  not an action per pointer event. Undo/redo restores canonical authored JSON on the
+  same element instances, including shape parameters and metadata. Live
+  `element:changed`/interaction notifications still fire during motion and replay, so
+  render/dirty observers and external display listeners remain connected. History
+  recording is suppressed only during synchronous engine mutations, never for the
+  lifetime of an asynchronous pointer gesture. The same editing/render behavior works
+  when `UndoRedoPlugin` is not installed; that optional plugin consumes the actions.
+- Paste creates fresh IDs from copied JSON/metadata and emits one action; redo reuses the
+  same pasted instances, IDs and insertion order. Delete remains removal of the selected
+  instances, now as one reversible action with original equal-z insertion order restored
+  on undo. One nudge call/key step records one action for the entire selection. Zero
+  movement, unchanged final transforms and empty commands create no action.
+
+#### Cancelling a pointer interaction
+
+```typescript
+// Public signature: cancelTransform(): void
+// Restore the in-progress gesture's authored before-state.
+engine.selection.cancelTransform();
+```
+
+Call `engine.selection.cancelTransform()` to cancel a move, resize, rotate or marquee.
+Cancellation restores canonical authored fields (including auto-size state and shape
+parameters), retains element references, and emits no history action or completed-transform
+end event. A click/no-op gesture also leaves no undo entry. Selection changes, removal of
+an active selected element, viewport movement/zoom, pointer cancellation and window blur
+cancel an active gesture so no recording suspension is left behind.
+
+**Escape** cancels an initialized selection interaction even without optional plugins;
+`KeyboardShortcutsPlugin` also forwards Escape to the public method. All installed stage,
+window and event-bus listeners are removed by their owning selection/plugin `destroy()`
+methods; they do not remove application listeners. Call the public cancellation method
+before an application-owned bulk replacement that bypasses element removal events (for
+example, a direct `elements.clear()`). Applications must not access engine-private history
+suppression flags.
+
 ---
 
 ## Managers

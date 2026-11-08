@@ -9,11 +9,19 @@ export class KeyboardShortcutsPlugin implements Plugin {
   private boundHandler: ((e: KeyboardEvent) => void) | null = null;
 
   init(engine: WatchfaceEngine): void {
+    this.destroy();
     this.engine = engine;
     const modKey = getModKey();
 
     this.boundHandler = (e: KeyboardEvent) => {
       const mod = e[modKey];
+
+      // Escape restores an active gesture without authoring or history residue.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        engine.selection.cancelTransform();
+        return;
+      }
 
       // Ctrl/Cmd+Z = Undo
       if (mod && !e.shiftKey && e.key === 'z') {

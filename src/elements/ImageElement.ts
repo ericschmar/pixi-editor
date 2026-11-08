@@ -127,6 +127,19 @@ export class ImageElement extends BaseElement {
     }
   }
 
+  /** @internal Preserve natural-vs-authored sizing for engine interaction snapshots. */
+  _captureInteractionSize(): { width: number | null; height: number | null } {
+    return { width: this.authoredWidth, height: this.authoredHeight };
+  }
+
+  /** @internal Restore sizing intent without changing source generation or readiness. */
+  _restoreInteractionSize(size: { width: number | null; height: number | null }): void {
+    this.authoredWidth = size.width;
+    this.authoredHeight = size.height;
+    this.sprite.width = size.width ?? this.sprite.texture.orig.width;
+    this.sprite.height = size.height ?? this.sprite.texture.orig.height;
+  }
+
   /** Readiness of the source generation current at the time of this call. */
   whenLoaded(): Promise<void> { return this.readiness; }
 

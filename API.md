@@ -290,6 +290,9 @@ image.src = '/new/image.png';  // async loads new texture
 image.width = 100;
 image.height = 100;
 image.loaded;  // read-only boolean, whether the current texture request completed
+image.pivot = { x: 0.25, y: 0.8 };  // normalized anchor, default { x: 0, y: 0 }
+image.getLocalBounds(); // { x: -25, y: -80, width: 100, height: 100 }
+await image.whenLoaded(); // readiness of the CURRENT source generation
 
 // All base element properties
 image.x = 150;
@@ -301,11 +304,34 @@ image.interactable = true;
 image.opacity = 0.9;
 ```
 
-Image codecs restore authored width/height (including zero) before asynchronous loading;
-those dimensions survive texture completion. Old requests cannot replace newer sources.
-Completion emits `element:resourceChanged` with `property: 'loaded'` rather than an
-undoable property action. Image load errors are still warnings; texture disposal, loading
-lifecycle redesign and pivots are outside this contract.
+`pivot: ImagePivot` is a normalized `{ x, y }` anchor; both coordinates must be finite
+numbers in `[0, 1]`. Assignment validates before changing anything and the getter returns
+a defensive copy. `x`/`y` always identify the authored rotation origin, not the image's
+top-left corner. The sprite anchor and `getLocalBounds(): Bounds` reflect the pivot:
+`{ x: -pivot.x * width, y: -pivot.y * height, width, height }`. Changing pivot is a
+normal undoable property edit. Canonical JSON includes a copied `pivot`; legacy JSON
+without one restores the default `(0, 0)`.
+
+Image codecs restore authored width/height (including explicit zero) before asynchronous
+loading. Authored dimensions survive texture completion, source changes, restore and
+clipboard operations; only unauthored axes adopt natural image dimensions. Dimensions
+must be finite and nonnegative. Completion emits `element:resourceChanged` with
+`property: 'loaded'`, never an authoring action or history entry.
+
+`whenLoaded(): Promise<void>` captures the source generation current when called. It
+resolves after that generation installs its texture and dimensions, or rejects on load
+failure, supersession, removal during loading, or disposal. Call it again after changing
+`src` to await the new generation. Ignoring readiness is safe: eager load failures never
+produce unhandled promise rejections. Old callbacks cannot modify replaced or disposed
+instances. Removing an image cancels in-flight work; reattaching it restarts loading if
+necessary, so normal undo/re-add remains supported.
+
+`dispose(): void` permanently cancels loading, rejects readiness and releases the display
+tree and privately owned textures; it is idempotent. Destroying the image's display
+container also disposes it. Detached images retain already loaded textures for undo;
+call `dispose()` when permanently retiring standalone/detached instances. Source
+replacement releases the previous privately owned texture after the new one is installed.
+No shared cached texture (including Pixi's `Texture.EMPTY`) is destroyed.
 
 ### ShapeElement
 
@@ -325,7 +351,24 @@ ShapeElement.rectangle(x, y, width, height);
 
 // Arc at (cx, cy) with radius from startAngle to endAngle
 ShapeElement.arc(cx, cy, radius, startAngle, endAngle);
+
+// Filled polygon at authored rotation origin (x, y), using LOCAL x/y pairs
+ShapeElement.polygon(x, y, [-8, 6, 4, 6, 4, -24, -8, -24]);
 ```
+
+`polygon(x: number, y: number, points: number[]): ShapeElement` requires a finite
+origin and at least three finite vertex pairs with finite, nonzero bounds and nonzero
+signed area. Invalid geometry throws before mutation. Local negative coordinates are
+preserved: the example has local bounds `{ x: -8, y: -24, width: 12, height: 30 }`,
+without shifting its authored origin. The input, `points` getter and serialized
+`shapeParams.points` are defensive copies. `shapeType` is `'polygon'`; document and
+clipboard codecs preserve its points, style, metadata and standard identity rules.
+
+Assigning `polygon.points` is undoable via the normal history stack. Setting positive,
+finite `width` or `height` scales the corresponding local vertex coordinates about
+`(0, 0)`; it does not move `x`/`y`. Zero/negative/nonfinite sizes are rejected to keep
+the polygon nondegenerate. Fill percentage/direction use its actual local bounds,
+including negative coordinates. Existing shape factories and their defaults are unchanged.
 
 #### Constructor Options
 
@@ -826,7 +869,11 @@ interface ElementPresentation {
 }
 
 type FillDirection = 'left-to-right' | 'right-to-left' | 'top-to-bottom' | 'bottom-to-top';
-type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc';
+type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc' | 'polygon';
+interface ImagePivot {
+  x: number; // finite, normalized [0, 1]
+  y: number; // finite, normalized [0, 1]
+}
 type ElementType = 'text' | 'image' | 'shape';
 
 interface HandleConfig {

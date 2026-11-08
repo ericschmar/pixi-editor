@@ -4,6 +4,39 @@ import { FillMask } from './FillMask.ts';
 import type { Bounds, FillDirection, LineCap, SerializedElement, ShapeType } from '../types.ts';
 import { clamp } from '../utils/math.ts';
 
+type ShapeParams = Partial<Record<'radius' | 'w' | 'h' | 'startAngle' | 'endAngle' | 'lx1' | 'ly1' | 'lx2' | 'ly2', number>> & { points?: number[] };
+
+/** @internal Shared by the factory, codecs and document preflight. */
+export function validatePolygonPoints(value: unknown): asserts value is number[] {
+  if (!Array.isArray(value) || value.length < 6 || value.length % 2 !== 0 ||
+      !Array.from(value).every(v => typeof v === 'number' && Number.isFinite(v))) {
+    throw new TypeError('polygon points must contain at least three finite x/y pairs');
+  }
+  const bounds = polygonBounds(value);
+  if (!Number.isFinite(bounds.width) || !Number.isFinite(bounds.height) || bounds.width <= 0 || bounds.height <= 0) {
+    throw new TypeError('polygon points must have finite, nondegenerate bounds');
+  }
+  // Translate and normalize before the shoelace sum to avoid overflow and large-origin cancellation.
+  let area = 0;
+  for (let i = 0; i < value.length; i += 2) {
+    const j = (i + 2) % value.length;
+    area += ((value[i]! - bounds.x) / bounds.width) * ((value[j + 1]! - bounds.y) / bounds.height)
+      - ((value[j]! - bounds.x) / bounds.width) * ((value[i + 1]! - bounds.y) / bounds.height);
+  }
+  if (!Number.isFinite(area) || area === 0) throw new TypeError('polygon points must enclose nonzero area');
+}
+
+function polygonBounds(points: number[]): Bounds {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (let i = 0; i < points.length; i += 2) {
+    minX = Math.min(minX, points[i]!);
+    maxX = Math.max(maxX, points[i]!);
+    minY = Math.min(minY, points[i + 1]!);
+    maxY = Math.max(maxY, points[i + 1]!);
+  }
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+}
+
 export class ShapeElement extends BaseElement {
   private bgGraphics: Graphics;
   private fgGraphics: Graphics;
@@ -16,11 +49,11 @@ export class ShapeElement extends BaseElement {
   private _fillDirection: FillDirection;
   private _strokeWidth: number;
   private _lineCap: LineCap;
-  private _shapeParams: Record<string, number>;
+  private _shapeParams: ShapeParams;
 
   private constructor(
     shapeType: ShapeType,
-    params: Record<string, number>,
+    params: ShapeParams,
     options?: Partial<{
       foregroundColor: number;
       backgroundColor: number;
@@ -33,7 +66,8 @@ export class ShapeElement extends BaseElement {
   ) {
     super('shape', id);
     this._shapeType = shapeType;
-    this._shapeParams = { ...params };
+    if (shapeType === 'polygon') validatePolygonPoints(params.points);
+    this._shapeParams = { ...params, ...(params.points ? { points: [...params.points] } : {}) };
     this._foregroundColor = options?.foregroundColor ?? 0xffffff;
     this._backgroundColor = options?.backgroundColor ?? 0x333333;
     this._fillPercentage = options?.fillPercentage ?? 100;
@@ -90,9 +124,36 @@ export class ShapeElement extends BaseElement {
     return el;
   }
 
+  /** Filled polygon in local coordinates; x/y remain the authored rotation origin. */
+  static polygon(x: number, y: number, points: number[]): ShapeElement {
+    validatePolygonPoints(points);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) throw new TypeError('polygon origin must be finite');
+    const el = new ShapeElement('polygon', { points });
+    el.x = x;
+    el.y = y;
+    return el;
+  }
+
   // --- Reactive shape properties ---
 
   get shapeType(): ShapeType { return this._shapeType; }
+
+  /** Defensive local vertex copy. Only available on polygons. */
+  get points(): number[] {
+    if (this._shapeType !== 'polygon') throw new TypeError('points is only available on polygons');
+    return [...this._shapeParams.points!];
+  }
+  set points(value: number[]) {
+    if (this._shapeType !== 'polygon') throw new TypeError('points is only available on polygons');
+    validatePolygonPoints(value);
+    const old = this.points;
+    const next = [...value];
+    if (old.length === next.length && old.every((v, i) => v === next[i])) return;
+    this._shapeParams.points = next;
+    this.redraw();
+    // Base history replays the normal setter. Freeze separate event/history snapshots.
+    this.emitChange('points', Object.freeze(old), Object.freeze([...next]));
+  }
 
   get foregroundColor(): number { return this._foregroundColor; }
   set foregroundColor(value: number) {
@@ -161,6 +222,13 @@ export class ShapeElement extends BaseElement {
     return this.getLocalBounds().width;
   }
   override set width(value: number) {
+    if (this._shapeType === 'polygon') {
+      if (!Number.isFinite(value) || value <= 0) throw new TypeError('polygon width must be finite and positive');
+      if (value === this.width) return;
+      const ratio = value / this.width;
+      this.points = this.points.map((v, i) => i % 2 === 0 ? v * ratio : v);
+      return;
+    }
     const old = this.width;
     if (old === value || old === 0) return;
     switch (this._shapeType) {
@@ -185,6 +253,13 @@ export class ShapeElement extends BaseElement {
     return this.getLocalBounds().height;
   }
   override set height(value: number) {
+    if (this._shapeType === 'polygon') {
+      if (!Number.isFinite(value) || value <= 0) throw new TypeError('polygon height must be finite and positive');
+      if (value === this.height) return;
+      const ratio = value / this.height;
+      this.points = this.points.map((v, i) => i % 2 === 1 ? v * ratio : v);
+      return;
+    }
     const old = this.height;
     if (old === value || old === 0) return;
     switch (this._shapeType) {
@@ -207,6 +282,8 @@ export class ShapeElement extends BaseElement {
 
   getLocalBounds(): Bounds {
     switch (this._shapeType) {
+      case 'polygon':
+        return polygonBounds(this._shapeParams.points!);
       case 'circle': {
         const r = this._shapeParams['radius']!;
         return { x: -r, y: -r, width: r * 2, height: r * 2 };
@@ -279,6 +356,9 @@ export class ShapeElement extends BaseElement {
 
   private drawShape(g: Graphics, color: number): void {
     switch (this._shapeType) {
+      case 'polygon':
+        g.poly(this._shapeParams.points!, true).fill({ color });
+        break;
       case 'line': {
         const lx1 = this._shapeParams['lx1']!;
         const ly1 = this._shapeParams['ly1']!;
@@ -310,7 +390,7 @@ export class ShapeElement extends BaseElement {
     return {
       ...super.toJSON(),
       shapeType: this._shapeType,
-      shapeParams: { ...this._shapeParams },
+      shapeParams: { ...this._shapeParams, ...(this._shapeParams.points ? { points: this.points } : {}) },
       foregroundColor: this._foregroundColor,
       backgroundColor: this._backgroundColor,
       fillPercentage: this._fillPercentage,
@@ -321,6 +401,11 @@ export class ShapeElement extends BaseElement {
   }
 
   override applyJSON(data: SerializedElement): void {
+    if (this._shapeType === 'polygon' && data.shapeParams !== undefined) {
+      const points = (data.shapeParams as ShapeParams | null)?.points;
+      validatePolygonPoints(points);
+      this.points = points;
+    }
     if (data.foregroundColor !== undefined) this.foregroundColor = data.foregroundColor as number;
     if (data.backgroundColor !== undefined) this.backgroundColor = data.backgroundColor as number;
     if (data.fillPercentage !== undefined) this.fillPercentage = data.fillPercentage as number;
@@ -331,7 +416,7 @@ export class ShapeElement extends BaseElement {
   }
 
   static fromJSON(data: SerializedElement): ShapeElement {
-    const params = data.shapeParams as Record<string, number>;
+    const params = data.shapeParams as ShapeParams;
     const el = new ShapeElement(data.shapeType as ShapeType, params, {
       foregroundColor: data.foregroundColor as number,
       backgroundColor: data.backgroundColor as number,

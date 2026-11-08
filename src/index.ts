@@ -36,6 +36,7 @@ export { SerializationManager } from "./managers/SerializationManager.ts";
 export type {
   FillDirection,
   ShapeType,
+  ImagePivot,
   LineCap,
   ArcPath,
   ElementType,

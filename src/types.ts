@@ -6,7 +6,13 @@ export type FillDirection = 'left-to-right' | 'right-to-left' | 'top-to-bottom' 
  */
 export type CoordinateOrigin = 'top-left' | 'center';
 
-export type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc';
+export type ShapeType = 'line' | 'circle' | 'rectangle' | 'arc' | 'polygon';
+
+/** Normalized image anchor; each coordinate is finite and in [0, 1]. */
+export interface ImagePivot {
+  x: number;
+  y: number;
+}
 
 export type LineCap = 'butt' | 'round' | 'square';
 

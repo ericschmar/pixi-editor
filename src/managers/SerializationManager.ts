@@ -2,8 +2,8 @@ import { cloneMetadata } from '../elements/BaseElement.ts';
 import type { BaseElement } from '../elements/BaseElement.ts';
 import { ElementRegistry } from '../elements/ElementRegistry.ts';
 import { TextElement } from '../elements/TextElement.ts';
-import { ImageElement } from '../elements/ImageElement.ts';
-import { ShapeElement } from '../elements/ShapeElement.ts';
+import { ImageElement, validateImagePivot } from '../elements/ImageElement.ts';
+import { ShapeElement, validatePolygonPoints } from '../elements/ShapeElement.ts';
 import type { EventBus } from '../EventBus.ts';
 import type { ElementManager } from './ElementManager.ts';
 import type { SerializedElement, WatchfaceState } from '../types.ts';
@@ -39,12 +39,13 @@ function validateElement(value: unknown): asserts value is SerializedElement {
   if (data.type === 'shape') {
     const required: Record<string, string[]> = {
       rectangle: ['w', 'h'], circle: ['radius'], arc: ['radius', 'startAngle', 'endAngle'],
-      line: ['lx1', 'ly1', 'lx2', 'ly2'],
+      line: ['lx1', 'ly1', 'lx2', 'ly2'], polygon: [],
     };
     if (typeof data.shapeType !== 'string' || !Object.hasOwn(required, data.shapeType)) {
       throw new TypeError('Invalid shapeType');
     }
     const params = object(data.shapeParams, 'shapeParams');
+    if (data.shapeType === 'polygon') validatePolygonPoints(params.points);
     for (const key of required[data.shapeType]!) {
       if (params[key] === undefined) throw new TypeError(`Missing shape parameter ${key}`);
       finite(params, key, ['w', 'h', 'radius'].includes(key) ? 0 : -Infinity);
@@ -74,8 +75,9 @@ function validateElement(value: unknown): asserts value is SerializedElement {
       }
       if (!['outside', 'inside'].includes(String(arc.side))) throw new TypeError('Invalid arcPath side');
     }
-  } else if (data.type === 'image' && typeof data.src !== 'string') {
-    throw new TypeError('image src must be a string');
+  } else if (data.type === 'image') {
+    if (typeof data.src !== 'string') throw new TypeError('image src must be a string');
+    if (data.pivot !== undefined) validateImagePivot(data.pivot);
   }
 }
 
